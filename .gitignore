@@ -1,0 +1,35 @@
+# build & dist output
+.dist/
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+
+# ignore src/obj for downloaded packages
+src/obj
+
+# runtime-generated files
+var/
+seed.iso
+
+# local configuration
+.cfg-vmgenie.yml
+
+# OS-generated files
+Thumbs.db
+.DS_Store
+ehthumbs.db
+desktop.ini
+
+# PowerShell artifacts
+*.ps1~
+*.ps1.save
+*.ps1.bak
+*.ps1~
+
+# Logs
+*.log
+
+# commit scratch pad
+commit.txt
