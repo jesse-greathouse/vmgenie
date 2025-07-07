@@ -1,0 +1,183 @@
+Import-Module "$PSScriptRoot\vmgenie-import.psm1"
+Import-Sharprompt
+
+function Invoke-UsernamePrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'User Name'
+    }
+
+    return [Sharprompt.Prompt]::Input[string](
+        $label,
+        $value
+    )
+}
+
+function Invoke-TimezonePrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Time Zone'
+    }
+
+    # Define the IANA timezones (keys of the map)
+    $timezones = [System.Collections.Generic.List[string]]::new()
+    @(
+        "Etc/GMT+12",
+        "Pacific/Pago_Pago",
+        "Pacific/Honolulu",
+        "America/Anchorage",
+        "America/Los_Angeles",
+        "America/Denver",
+        "America/Chicago",
+        "America/New_York",
+        "America/Halifax",
+        "America/Argentina/Buenos_Aires",
+        "Atlantic/South_Georgia",
+        "Atlantic/Azores",
+        "Etc/UTC",
+        "Europe/Paris",
+        "Europe/Athens",
+        "Europe/Moscow",
+        "Asia/Dubai",
+        "Asia/Karachi",
+        "Asia/Dhaka",
+        "Asia/Bangkok",
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Pacific/Guadalcanal",
+        "Pacific/Auckland",
+        "Pacific/Tongatapu",
+        "Pacific/Kiritimati"
+    ) | ForEach-Object { $timezones.Add($_) }
+
+    # If a current value exists and is in the list, use it as default
+    if ($value -and $timezones.Contains($value)) {
+        $default = $value
+    } else {
+        $default = $null
+    }
+
+    # Prepare SelectOptions
+    $options = [Sharprompt.SelectOptions[string]]::new()
+    $options.Message = $label
+    $options.Items = $timezones
+    $options.DefaultValue = $default
+    $options.PageSize = 27  # adjust as you like
+
+    [Sharprompt.Prompt]::Select[string]($options)
+}
+
+
+function Invoke-LayoutPrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Keyboard Layout'
+    }
+
+    # common layouts — you can add more if needed
+    $layouts = @(
+        'us',           # United States
+        'gb',           # United Kingdom
+        'de',           # Germany
+        'fr',           # France
+        'es',           # Spain
+        'it',           # Italy
+        'pt',           # Portugal
+        'br',           # Brazil
+        'jp',           # Japan
+        'ru',           # Russia
+        'se',           # Sweden
+        'fi',           # Finland
+        'no',           # Norway
+        'dk',           # Denmark
+        'pl',           # Poland
+        'cz',           # Czech Republic
+        'hu',           # Hungary'
+        'ca',           # Canada (French)
+        'ch',           # Switzerland
+        'be',           # Belgium
+        'tr',           # Turkey
+        'gr'            # Greece
+    )
+
+    # If the current value is valid, use it as default
+    $default = if ($value -and $layouts -contains $value) { $value } else { $null }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $layouts | ForEach-Object { $options.Items.Add($_) }
+    $options.DefaultValue = $default
+    $options.PageSize = 22
+
+    return [Sharprompt.Prompt]::Select[string]($options)
+}
+
+function Invoke-LocalePrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Locale'
+    }
+
+    # Common locales — you can extend this list as needed
+    $locales = @(
+        'en_US.UTF-8',   # US English
+        'en_GB.UTF-8',   # UK English
+        'fr_FR.UTF-8',   # French
+        'de_DE.UTF-8',   # German
+        'es_ES.UTF-8',   # Spanish
+        'it_IT.UTF-8',   # Italian
+        'pt_PT.UTF-8',   # Portuguese
+        'pt_BR.UTF-8',   # Brazilian Portuguese
+        'ru_RU.UTF-8',   # Russian
+        'ja_JP.UTF-8',   # Japanese
+        'zh_CN.UTF-8',   # Chinese (Simplified)
+        'zh_TW.UTF-8',   # Chinese (Traditional)
+        'ko_KR.UTF-8',   # Korean
+        'nl_NL.UTF-8',   # Dutch
+        'sv_SE.UTF-8',   # Swedish
+        'fi_FI.UTF-8',   # Finnish
+        'no_NO.UTF-8',   # Norwegian
+        'pl_PL.UTF-8',   # Polish
+        'cs_CZ.UTF-8',   # Czech
+        'hu_HU.UTF-8',   # Hungarian
+        'tr_TR.UTF-8',   # Turkish
+        'el_GR.UTF-8'    # Greek
+    )
+
+    # Determine if the current value is valid and set it as default
+    $default = if ($value -and $locales -contains $value) { $value } else { $null }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $locales | ForEach-Object { $options.Items.Add($_) }
+    $options.DefaultValue = $default
+    $options.PageSize = 10
+
+    return [Sharprompt.Prompt]::Select[string]($options)
+}
+
+
+Export-ModuleMember -Function `
+    Invoke-UsernamePrompt, `
+    Invoke-TimezonePrompt, `
+    Invoke-LayoutPrompt, `
+	Invoke-LocalePrompt

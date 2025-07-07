@@ -1,5 +1,5 @@
 # bin/install.ps1
-# Orchestrates bootstrap (elevated) and build (normal) steps
+# Orchestrates bootstrap (elevated), build (normal), and configure (normal) steps
 
 Write-Host "🧰 Starting vmgenie installation..." -ForegroundColor Cyan
 
@@ -60,5 +60,16 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "🎉 Installation complete!" -ForegroundColor Cyan
+Write-Host "✅ Build succeeded. Continuing with configuration..." -ForegroundColor Green
+
+# Step 3: Run configure (normal privileges)
+$configureScript = Join-Path $PSScriptRoot "configure.ps1"
+& $configureScript
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "🚫 Configuration failed with exit code $LASTEXITCODE. Installation aborted."
+    exit 1
+}
+
+Write-Host "🎉 Installation and configuration complete! Ready to run." -ForegroundColor Cyan
 exit 0

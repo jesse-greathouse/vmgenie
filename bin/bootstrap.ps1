@@ -48,9 +48,37 @@ if ($hvFeature.State -ne 'Enabled') {
 try {
     $dotnetVersion = & dotnet --version
     if ($LASTEXITCODE -ne 0) { throw }
+
+    # parse version
+    $dotnetMajor, $dotnetMinor, $dotnetPatch = $dotnetVersion.Split('.')
+
+    if ([int]$dotnetMajor -lt 8) {
+        Fail ".NET SDK version $dotnetVersion is too old. Requires .NET SDK ≥ 8.0. Install it from https://dotnet.microsoft.com/download"
+    }
+
     Write-Host "[OK] .NET SDK: $dotnetVersion" -ForegroundColor Green
 } catch {
     Fail 'The .NET SDK is not installed or not in PATH. Install it from https://dotnet.microsoft.com/download'
+}
+
+# region --- Write APPLICATION_DIR to Registry ---
+try {
+    Write-Host '[INFO] Writing APPLICATION_DIR to registry...' -ForegroundColor Cyan
+
+    $serviceRegPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\VmGenie\Parameters'
+
+    if (-not (Test-Path $serviceRegPath)) {
+        New-Item -Path $serviceRegPath -Force | Out-Null
+    }
+
+    # Resolve absolute repo path
+    $repoRoot = Resolve-Path "$PSScriptRoot\.."
+
+    Set-ItemProperty -Path $serviceRegPath -Name 'APPLICATION_DIR' -Value $repoRoot -Force
+
+    Write-Host "[OK] APPLICATION_DIR set to '$repoRoot' in registry." -ForegroundColor Green
+} catch {
+    Fail 'Failed to write to registry Key'
 }
 
 Write-Host ''
