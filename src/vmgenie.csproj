@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
@@ -12,6 +12,9 @@
     <PackageReference Include="YamlDotNet" Version="13.1.1" />
     <PackageReference Include="CommandLineParser" Version="2.9.1" />
     <PackageReference Include="Scriban" Version="5.8.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.EventLog" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

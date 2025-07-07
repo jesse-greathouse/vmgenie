@@ -9,6 +9,7 @@
 
 # ignore src/obj for downloaded packages
 src/obj
+src/bin
 
 # runtime-generated files
 var/

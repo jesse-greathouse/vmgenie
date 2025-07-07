@@ -1,27 +1,33 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Threading.Tasks;
 
-IHost host = Host.CreateDefaultBuilder(args)
-    .UseWindowsService(options =>
-    {
-        options.ServiceName = "VmGenie Service";
-    })
-    .ConfigureLogging(logging =>
-    {
-        // Remove default providers
-        logging.ClearProviders();
+namespace VmGenie;
 
-        // Add EventLog provider
-        logging.AddEventLog(settings =>
-        {
-            settings.SourceName = "VmGenie Service";
-        });
-    })
-    .ConfigureServices((hostContext, services) =>
+public class Program
+{
+    public static async Task Main(string[] args)
     {
-        services.AddHostedService<Worker>();
-    })
-    .Build();
-
-host.Run();
+        await Host.CreateDefaultBuilder(args)
+            .UseWindowsService(options =>
+            {
+                options.ServiceName = ServiceMetadata.ServiceName;
+            })
+            .ConfigureLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddConsole();
+                logging.AddEventLog(settings =>
+                {
+                    settings.SourceName = ServiceMetadata.ServiceName;
+                });
+            })
+            .ConfigureServices(services =>
+            {
+                services.AddHostedService<Worker>();
+            })
+            .Build()
+            .RunAsync();
+    }
+}

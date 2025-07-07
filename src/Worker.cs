@@ -3,20 +3,23 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using System;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
+using System.IO.Pipes;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using YamlDotNet.Serialization;
+
+namespace VmGenie;
 
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private string _applicationDir;
+    private readonly string _applicationDir;
+    private readonly Config _cfg;
 
     public Worker(ILogger<Worker> logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _applicationDir = GetApplicationDirectory();
 
         _logger.LogInformation("APPLICATION_DIR resolved to: {dir}", _applicationDir);
@@ -28,48 +31,87 @@ public class Worker : BackgroundService
             throw new FileNotFoundException(".vmgenie-cfg.yml not found in APPLICATION_DIR", yamlPath);
         }
 
-        _logger.LogInformation("Configuration file verified at: {yamlPath}", yamlPath);
+        _cfg = LoadConfiguration(yamlPath);
+        _logger.LogInformation("Loaded configuration: {@Config}", _cfg);
+
+        if (string.IsNullOrWhiteSpace(_cfg.ApplicationDir))
+        {
+            _logger.LogCritical("Config is invalid: ApplicationDir is missing.");
+            throw new InvalidOperationException("Invalid configuration: ApplicationDir is missing.");
+        }
+    }
+
+    private Config LoadConfiguration(string yamlPath)
+    {
+        try
+        {
+            var deserializer = new DeserializerBuilder()
+                .Build();
+
+            string yamlContent = File.ReadAllText(yamlPath);
+            var config = deserializer.Deserialize<Config>(yamlContent);
+
+            if (config == null)
+                throw new InvalidOperationException("Failed to deserialize YAML into Config.");
+
+            return config;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "Failed to parse configuration file.");
+            throw;
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("VmGenie Service started at: {time}", DateTimeOffset.Now);
 
-        var listener = new TcpListener(IPAddress.Loopback, 5050);
-        listener.Start();
-
-        _logger.LogInformation("Listening on port 5050...");
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (listener.Pending())
+            try
             {
-                var client = await listener.AcceptTcpClientAsync(stoppingToken);
-                _ = HandleClient(client, stoppingToken);
-            }
+                using var pipeServer = new NamedPipeServerStream(
+                    "vmgenie",
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous);
 
-            await Task.Delay(500, stoppingToken); // don’t spin
+                _logger.LogInformation("Waiting for client connection on named pipe...");
+
+                await pipeServer.WaitForConnectionAsync(stoppingToken);
+
+                _logger.LogInformation("Client connected.");
+
+                await HandleClient(pipeServer, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in named pipe listener.");
+            }
         }
 
-        listener.Stop();
         _logger.LogInformation("VmGenie Service stopped.");
     }
 
-    private async Task HandleClient(TcpClient client, CancellationToken stoppingToken)
+    private async Task HandleClient(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        using (client)
-        {
-            var stream = client.GetStream();
-            var buffer = new byte[4096];
-            int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, stoppingToken);
+        var buffer = new byte[4096];
+        int bytesRead = await pipe.ReadAsync(buffer, 0, buffer.Length, stoppingToken);
 
-            string request = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            _logger.LogInformation("Received: {request}", request);
+        string request = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+        _logger.LogInformation("Received: {request}", request.Trim());
 
-            string response = $"Acknowledged: {request.Trim()}";
-            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-            await stream.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
-        }
+        string response = $"Acknowledged: {request.Trim()}";
+        byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+        await pipe.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
+
+        _logger.LogInformation("Response sent.");
     }
 
     private string GetApplicationDirectory()
@@ -93,7 +135,7 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogCritical(ex, "Failed to read or validate APPLICATION_DIR from registry.");
-            throw; // propagate so service startup fails explicitly
+            throw;
         }
     }
 }
