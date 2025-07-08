@@ -26,8 +26,11 @@ public class Config
     [YamlMember(Alias = "LOG_DIR")]
     public string LogDir { get; set; } = string.Empty;
 
-    [YamlMember(Alias = "RUN_DIR")]
-    public string RunDir { get; set; } = string.Empty;
+    [YamlMember(Alias = "CLOUD_DIR")]
+    public string CloudDir { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "TEMPLATE_DIR")]
+    public string TemplateDir { get; set; } = string.Empty;
 
     [YamlMember(Alias = "APPLICATION_DIR")]
     public string ApplicationDir { get; set; } = string.Empty;

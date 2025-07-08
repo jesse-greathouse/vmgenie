@@ -170,7 +170,7 @@ function Invoke-LocalePrompt {
     $options.Items = [System.Collections.Generic.List[string]]::new()
     $locales | ForEach-Object { $options.Items.Add($_) }
     $options.DefaultValue = $default
-    $options.PageSize = 10
+    $options.PageSize = 22
 
     return [Sharprompt.Prompt]::Select[string]($options)
 }
