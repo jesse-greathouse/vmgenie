@@ -49,12 +49,10 @@ public class Worker : BackgroundService
                 .Build();
 
             string yamlContent = File.ReadAllText(yamlPath);
-            var config = deserializer.Deserialize<Config>(yamlContent);
-
-            if (config == null)
-                throw new InvalidOperationException("Failed to deserialize YAML into Config.");
-
-            return config;
+            var config = deserializer.Deserialize<Config>(yamlContent) ?? throw new InvalidOperationException(
+                "Failed to deserialize YAML into Config."
+            );
+			return config;
         }
         catch (Exception ex)
         {

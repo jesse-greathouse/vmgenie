@@ -4,29 +4,21 @@ using System.Text.Json.Serialization;
 
 namespace VmGenie;
 
-public class Event
+[method: JsonConstructor]
+public class Event(string id, string command, Dictionary<string, object> parameters, DateTime timestamp)
 {
-    [JsonPropertyName("id")]
-    public string Id { get; init; }
+	[JsonPropertyName("id")]
+	public string Id { get; init; } = id ?? throw new ArgumentNullException(nameof(id));
 
-    [JsonPropertyName("command")]
-    public string Command { get; init; }
+	[JsonPropertyName("command")]
+	public string Command { get; init; } = command ?? throw new ArgumentNullException(nameof(command));
 
-    [JsonPropertyName("parameters")]
-    public Dictionary<string, object> Parameters { get; init; }
+	[JsonPropertyName("parameters")]
+	public Dictionary<string, object> Parameters { get; init; } = parameters ?? new();
 
-    [JsonPropertyName("timestamp")]
-    public DateTime Timestamp { get; init; }
+	[JsonPropertyName("timestamp")]
+	public DateTime Timestamp { get; init; } = timestamp;
 
-    [JsonConstructor]
-    public Event(string id, string command, Dictionary<string, object> parameters, DateTime timestamp)
-    {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
-        Command = command ?? throw new ArgumentNullException(nameof(command));
-        Parameters = parameters ?? new();
-        Timestamp = timestamp;
-    }
-
-    public Event(string id, string command, IDictionary<string, object> parameters)
+	public Event(string id, string command, IDictionary<string, object> parameters)
         : this(id, command, new Dictionary<string, object>(parameters ?? new Dictionary<string, object>()), DateTime.UtcNow) { }
 }

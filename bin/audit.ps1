@@ -57,7 +57,7 @@ if ($Mask) {
 # Directory name exclusion (regex)
 $excludedDirs = @(
     '\\var\\', '\\obj\\', '\\.vs\\',
-    '\\Debug\\', '\\Release\\',
+    '\\doc\\', '\\Debug\\', '\\Release\\',
     '\\packages\\', '\\TestResults\\'
 )
 

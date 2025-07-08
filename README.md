@@ -133,4 +133,4 @@ You can extend the JSON schema with more commands and richer responses. For exam
 
 ---
 
-For more details, see: [docs/protocol.md](./docs/protocol.md)
+For more details, see: [doc/protocol.md](./doc/protocol.md)

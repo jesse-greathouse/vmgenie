@@ -22,12 +22,11 @@ public class EventHandlerEngine
         if (string.IsNullOrWhiteSpace(command))
             throw new ArgumentException("Command cannot be null or empty.", nameof(command));
 
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
+		ArgumentNullException.ThrowIfNull(handler);
 
-        _handlers.AddOrUpdate(
+		_handlers.AddOrUpdate(
             command,
-            _ => new List<EventHandler> { handler },
+            _ => [handler],
             (_, list) =>
             {
                 list.Add(handler);
@@ -43,21 +42,20 @@ public class EventHandlerEngine
 
     public async Task<List<EventResponse>> DispatchAsync(Event evt, CancellationToken token)
     {
-        if (evt == null)
-            throw new ArgumentNullException(nameof(evt));
+		ArgumentNullException.ThrowIfNull(evt);
 
-        if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
+		if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
         {
-            return new List<EventResponse>
-            {
-                EventResponse.Error(evt, $"Unknown command: {evt.Command}")
-            };
+            return
+			[
+				EventResponse.Error(evt, $"Unknown command: {evt.Command}")
+            ];
         }
 
         var tasks = handlers.Select(handler => SafeExecute(handler, evt, token)).ToArray();
         var results = await Task.WhenAll(tasks);
 
-        return results.ToList();
+        return [.. results];
     }
 
     private async Task<EventResponse> SafeExecute(EventHandler handler, Event evt, CancellationToken token)
