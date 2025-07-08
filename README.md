@@ -2,6 +2,19 @@
 
 🧞 Automated, reproducible Hyper‑V VM provisioning made easy.
 
+I have been asked by Microsoft to demonstrate the architecture for a Virtual Machine provisioning tool, with [cloud-init](https://cloud-init.io/), for the Hyper-V virtual machine hypervisor, for the Windows Operating System.
+
+---
+
+> 📝 **Why vmgenie?**
+>
+> Hyper‑V, while a powerful virtualization platform on Windows, lacks a native equivalent to *cloud‑init* — the de facto standard for automated provisioning in cloud environments.
+> This gap forces users to rely on ad‑hoc scripts, manual VM customization, or brittle templates, making Hyper‑V less convenient for modern, automated workflows.
+> `vmgenie` was created to fill that gap: it brings a **cloud‑init–style experience to Hyper‑V**, enabling reproducible, automated provisioning of Linux (and potentially Windows) VMs through declarative configuration, seed ISOs, and a robust Windows Service API.
+> The vision is to make Hyper‑V as approachable for automated, large‑scale, or developer‑friendly workflows as Azure or other cloud providers — while remaining lightweight, unintrusive, and secure.
+
+---
+
 ## Features
 
 - Generate and manage seed ISOs for cloud-init–enabled Linux VMs
