@@ -9,12 +9,12 @@ namespace VmGenie;
 
 public class EventHandlerEngine
 {
-    private readonly ConcurrentDictionary<string, List<EventHandler>> _handlers =
+    private readonly ConcurrentDictionary<string, List<IEventHandler>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
 
     private bool _frozen = false;
 
-    public void Register(string command, EventHandler handler)
+    public void Register(string command, IEventHandler handler)
     {
         if (_frozen)
             throw new InvalidOperationException("Cannot register handlers after engine is frozen.");
@@ -22,9 +22,9 @@ public class EventHandlerEngine
         if (string.IsNullOrWhiteSpace(command))
             throw new ArgumentException("Command cannot be null or empty.", nameof(command));
 
-		ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(handler);
 
-		_handlers.AddOrUpdate(
+        _handlers.AddOrUpdate(
             command,
             _ => [handler],
             (_, list) =>
@@ -40,33 +40,42 @@ public class EventHandlerEngine
         _frozen = true;
     }
 
-    public async Task<List<EventResponse>> DispatchAsync(Event evt, CancellationToken token)
+    /// Returns the list of registered command keys.
+    public List<string> GetRegisteredCommands()
     {
-		ArgumentNullException.ThrowIfNull(evt);
-
-		if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
-        {
-            return
-			[
-				EventResponse.Error(evt, $"Unknown command: {evt.Command}")
-            ];
-        }
-
-        var tasks = handlers.Select(handler => SafeExecute(handler, evt, token)).ToArray();
-        var results = await Task.WhenAll(tasks);
-
-        return [.. results];
+        return [.. _handlers.Keys];
     }
 
-    private async Task<EventResponse> SafeExecute(EventHandler handler, Event evt, CancellationToken token)
+    public async Task DispatchAsync(Event evt, IWorkerContext ctx, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        ArgumentNullException.ThrowIfNull(ctx);
+
+        if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, $"Unknown command: {evt.Command}"), 
+                token
+            );
+            return;
+        }
+
+        var tasks = handlers.Select(handler => SafeExecute(handler, evt, ctx, token)).ToArray();
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task SafeExecute(IEventHandler handler, Event evt, IWorkerContext ctx, CancellationToken token)
     {
         try
         {
-            return await handler(evt, token);
+            await handler.HandleAsync(evt, ctx, token);
         }
         catch (Exception ex)
         {
-            return EventResponse.Error(evt, ex.Message);
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, ex.Message),
+                token
+            );
         }
     }
 }

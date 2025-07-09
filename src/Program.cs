@@ -9,6 +9,11 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
+        // Build and configure EventHandlerEngine here
+        var engine = new EventHandlerEngine();
+        engine.Register("status", new EventHandlers.StatusHandler());
+        engine.Freeze();
+
         await Host.CreateDefaultBuilder(args)
             .UseWindowsService(options =>
             {
@@ -25,6 +30,10 @@ public class Program
             })
             .ConfigureServices(services =>
             {
+                // Register frozen EventHandlerEngine instance
+                services.AddSingleton(engine);
+
+                // Register Worker
                 services.AddHostedService<Worker>();
             })
             .Build()

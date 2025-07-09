@@ -63,13 +63,13 @@ $excludedDirs = @(
 
 # File name exclusion (regex or exact match)
 $excludedFiles = @(
-    '.*\.dll$', '.*\.exe$', '.*\.pdb$', '.*\.cache$', '.*\.pdf',
+    '.*\.dll$', '.*\.exe$', '.*\.pdb$', '.*\.cache$', '.*\.pdf', '.*commit\.txt',
     '.*\.log$', '.*\.sln$', '.*\.user$', '.*\.suo$', '^\.DS_Store$',
     '.*\.tmp$', '.*\.bak$', '.*\.g\.cs$', '.*\.AssemblyInfo\.cs$'
 )
 
 # Helper to test for binary content
-function Is-BinaryFile($path) {
+function Test-BinaryFile($path) {
     try {
         $bytes = [System.IO.File]::ReadAllBytes($path)
         foreach ($b in $bytes[0..([Math]::Min(1024, $bytes.Length - 1))]) {
@@ -104,7 +104,7 @@ Get-ChildItem -Path $resolvedPath -Recurse -File -Force:$Hidden | ForEach-Object
     }
 
     # Skip binary files
-    if (Is-BinaryFile $fullPath) { return }
+    if (Test-BinaryFile $fullPath) { return }
 
     # Apply escaped regex masks
     if ($patterns.Count -gt 0) {
