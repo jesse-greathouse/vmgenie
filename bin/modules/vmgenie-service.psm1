@@ -9,16 +9,18 @@ $DisplayName      = "VmGenie Service"
 $PublishConfig    = "Release"
 $Runtime          = "win-x64"
 $ProjectPath      = Resolve-Path "$PSScriptRoot\..\..\src\vmgenie.csproj"
-$PublishOutput    = Resolve-Path "$PSScriptRoot\..\..\bin\Release\net8.0\win-x64\publish"
-$ServiceTargetDir = "C:\Program Files\VmGenie\Service"  # Customize as desired
+$ServiceTargetDir = "C:\Program Files\VmGenie\Service"
 
 function Build-VmGenieService {
 <#
 .SYNOPSIS
 Publishes the VmGenie service to the publish directory.
 #>
+
     Write-Host "🔨 Building (publishing) VmGenie Service..." -ForegroundColor Cyan
     Push-Location (Split-Path $ProjectPath)
+
+    $PublishOutput = Join-Path $PSScriptRoot '..\..\bin\Release\net8.0\win-x64\publish' | Resolve-Path -ErrorAction SilentlyContinue
 
     dotnet publish $ProjectPath `
         -c $PublishConfig `
@@ -96,9 +98,46 @@ Restarts the VmGenie service.
     Start-VmGenieService
 }
 
+function Test-VmGenieStatus {
+<#
+.SYNOPSIS
+Queries the VmGenie Service via the "status" command and returns $true if it responds OK.
+#>
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+    $clientModulePath = Join-Path $repoRoot 'bin\modules\vmgenie-client.psm1'
+
+    if (-not (Test-Path $clientModulePath)) {
+        throw "Could not find vmgenie-client.psm1 at: $clientModulePath"
+    }
+
+    Import-Module $clientModulePath -Force
+
+    $responseStatus = $false
+    $responseStatusRef = [ref]$responseStatus
+
+    try {
+        $null = Send-Event -Command "status" -Parameters @{} -Handler {
+            param($Response)
+
+            if ($Response.status -eq 'ok') {
+                $responseStatusRef.Value = $true
+            }
+
+            Complete-Request -Id $Response.id
+        }
+    }
+    catch {
+        # swallow connection errors silently — service is likely down
+        $responseStatusRef.Value = $false
+    }
+
+    return $responseStatusRef.Value
+}
+
 Export-ModuleMember -Function `
     Build-VmGenieService, `
     Install-VmGenieService, `
     Start-VmGenieService, `
     Stop-VmGenieService, `
-    Restart-VmGenieService
+    Restart-VmGenieService, `
+    Test-VmGenieStatus
