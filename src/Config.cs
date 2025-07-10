@@ -1,4 +1,5 @@
 using System;
+
 using YamlDotNet.Serialization;
 
 namespace VmGenie;

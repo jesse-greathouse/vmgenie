@@ -1,16 +1,14 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using YamlDotNet.Serialization;
+
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace VmGenie;
 
@@ -22,30 +20,17 @@ public class Worker : BackgroundService
     private readonly EventHandlerEngine _engine;
     private readonly List<string> _commands;
 
-    public Worker(ILogger<Worker> logger, EventHandlerEngine engine)
+    public Worker(ILogger<Worker> logger, EventHandlerEngine engine, Config cfg)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _applicationDir = GetApplicationDirectory();
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
 
+        _applicationDir = cfg.ApplicationDir;
         _logger.LogInformation("APPLICATION_DIR resolved to: {dir}", _applicationDir);
 
-        string yamlPath = Path.Combine(_applicationDir, ".vmgenie-cfg.yml");
-        if (!File.Exists(yamlPath))
-        {
-            _logger.LogError("Configuration file not found at expected location: {yamlPath}", yamlPath);
-            throw new FileNotFoundException(".vmgenie-cfg.yml not found in APPLICATION_DIR", yamlPath);
-        }
-
-        _cfg = LoadConfiguration(yamlPath);
         _logger.LogInformation("Loaded configuration: {@Config}", _cfg);
 
-        if (string.IsNullOrWhiteSpace(_cfg.ApplicationDir))
-        {
-            _logger.LogCritical("Config is invalid: ApplicationDir is missing.");
-            throw new InvalidOperationException("Invalid configuration: ApplicationDir is missing.");
-        }
-
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _commands = [.. _engine.GetRegisteredCommands()];
     }
 
@@ -54,7 +39,7 @@ public class Worker : BackgroundService
         private readonly NamedPipeServerStream _pipe = pipe ?? throw new ArgumentNullException(nameof(pipe));
         private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-		public async Task SendResponseAsync(EventResponse response, CancellationToken token)
+        public async Task SendResponseAsync(EventResponse response, CancellationToken token)
         {
             string responseJson = JsonSerializer.Serialize(response);
             byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson + "\n");
@@ -62,26 +47,6 @@ public class Worker : BackgroundService
             await _pipe.WriteAsync(responseBytes, 0, responseBytes.Length, token);
 
             _logger.LogInformation("Response sent: {response}", responseJson);
-        }
-    }
-
-    private Config LoadConfiguration(string yamlPath)
-    {
-        try
-        {
-            var deserializer = new DeserializerBuilder()
-                .Build();
-
-            string yamlContent = File.ReadAllText(yamlPath);
-            var config = deserializer.Deserialize<Config>(yamlContent) ?? throw new InvalidOperationException(
-                "Failed to deserialize YAML into Config."
-            );
-            return config;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogCritical(ex, "Failed to parse configuration file.");
-            throw;
         }
     }
 
@@ -131,8 +96,8 @@ public class Worker : BackgroundService
 
         var ctx = new WorkerContext(pipe, _logger);
 
-		Event? evt;
-		try
+        Event? evt;
+        try
         {
             evt = JsonSerializer.Deserialize<Event>(requestJson);
         }
@@ -278,30 +243,5 @@ public class Worker : BackgroundService
                 details = $"Command '{cmd}' is not a registered command."
             }
         );
-    }
-
-    private string GetApplicationDirectory()
-    {
-        const string regPath = @"SYSTEM\CurrentControlSet\Services\VmGenie\Parameters";
-        const string regValue = "APPLICATION_DIR";
-
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(regPath);
-            var value = key?.GetValue(regValue) as string;
-
-            if (string.IsNullOrWhiteSpace(value))
-                throw new InvalidOperationException("APPLICATION_DIR registry value is missing or empty.");
-
-            if (!Directory.Exists(value))
-                throw new DirectoryNotFoundException($"APPLICATION_DIR does not exist: {value}");
-
-            return value;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogCritical(ex, "Failed to read or validate APPLICATION_DIR from registry.");
-            throw;
-        }
     }
 }

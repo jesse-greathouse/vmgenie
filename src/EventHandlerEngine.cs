@@ -54,7 +54,7 @@ public class EventHandlerEngine
         if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
         {
             await ctx.SendResponseAsync(
-                EventResponse.Error(evt, $"Unknown command: {evt.Command}"), 
+                EventResponse.Error(evt, $"Unknown command: {evt.Command}"),
                 token
             );
             return;

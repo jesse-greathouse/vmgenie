@@ -1,3 +1,4 @@
+Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 Import-Module "$PSScriptRoot\vmgenie-import.psm1"
 Import-Sharprompt
 
@@ -175,9 +176,61 @@ function Invoke-LocalePrompt {
     return [Sharprompt.Prompt]::Select[string]($options)
 }
 
+function Invoke-OperatingSystemPrompt {
+    param (
+        [string] $default = $null,
+        [string] $label = 'Operating System'
+    )
+
+    # Send the event and block until we get a response
+    $script:OperatingSystemsResult = $null
+    $script:OperatingSystemsError = $null
+
+    $result = Send-Event -Command 'operating-system' -Parameters @{ action = 'list' } -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            # Record the error so outer code can throw explicitly
+            $script:OperatingSystemsError = $Response.data.details
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:OperatingSystemsResult = $Response.data.operatingSystems
+        Complete-Request -Id $Response.id
+    }
+
+    if (-not $result) {
+        throw "Failed to retrieve operating systems: service did not respond or response was invalid."
+    }
+
+    if ($script:OperatingSystemsError) {
+        throw "Service error: $script:OperatingSystemsError"
+    }
+
+    if (-not $script:OperatingSystemsResult -or $script:OperatingSystemsResult.Count -eq 0) {
+        throw "No operating systems available to select."
+    }
+
+    # Prepare the SharpPrompt select
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $script:OperatingSystemsResult | ForEach-Object { $options.Items.Add($_) }
+
+    if ($default -and $options.Items.Contains($default)) {
+        $options.DefaultValue = $default
+    }
+
+    $options.PageSize = 10
+
+    return [Sharprompt.Prompt]::Select[string]($options)
+}
+
 
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
     Invoke-LayoutPrompt, `
-	Invoke-LocalePrompt
+	Invoke-LocalePrompt, `
+    Invoke-OperatingSystemPrompt
