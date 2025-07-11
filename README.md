@@ -28,8 +28,15 @@ A demonstration of a modern Virtual Machine provisioning tool for Hyper‑V on W
 - [vmgenie](#vmgenie)
   - [✨ Features](#-features)
   - [📚 Table of Contents](#-table-of-contents)
+  - [📖 Further Documentation](#-further-documentation)
   - [🧰 Installation](#-installation)
-  - [🔗 Further Documentation](#-further-documentation)
+  
+## 📖 Further Documentation
+
+- [📡 Protocol Specification](doc/protocol.md)
+- [🛠  Service Architecture & Extensibility](doc/service.md)
+- [📋 Client Module & Automation](doc/client.md)
+- [🧩 OS Templating](doc/template.md)
 
 ---
 
@@ -65,11 +72,3 @@ or
 ```powershell
 ❌ Service is down
 ```
-
----
-
-## 🔗 Further Documentation
-
-- 📡 [Protocol Specification](doc/protocol.md)
-- 🛠  [Service Architecture & Extensibility](doc/service.md)
-- 📋 [Client Module & Automation](doc/client.md)
