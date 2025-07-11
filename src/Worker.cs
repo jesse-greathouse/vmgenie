@@ -15,7 +15,6 @@ namespace VmGenie;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly string _applicationDir;
     private readonly Config _cfg;
     private readonly EventHandlerEngine _engine;
     private readonly List<string> _commands;
@@ -23,11 +22,10 @@ public class Worker : BackgroundService
     public Worker(ILogger<Worker> logger, EventHandlerEngine engine, Config cfg)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-        _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
 
-        _applicationDir = cfg.ApplicationDir;
-        _logger.LogInformation("APPLICATION_DIR resolved to: {dir}", _applicationDir);
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+
+        _cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
 
         _logger.LogInformation("Loaded configuration: {@Config}", _cfg);
 

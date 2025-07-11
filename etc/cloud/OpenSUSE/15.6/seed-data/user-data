@@ -1,0 +1,18 @@
+#cloud-config
+users:
+  - default
+  - name: {{ USERNAME }}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    home: /home/{{ USERNAME }}
+    lock_passwd: true
+    groups: sudo
+    ssh-authorized-keys:
+      - {{ PRIVKEY }}
+timezone: {{ TIMEZONE }}
+locale: {{ LOCALE }}
+keyboard:
+  layout: {{ LAYOUT }}
+runcmd:
+  - apt update -y
+  - apt upgrade -y

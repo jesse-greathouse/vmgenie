@@ -227,10 +227,66 @@ function Invoke-OperatingSystemPrompt {
     return [Sharprompt.Prompt]::Select[string]($options)
 }
 
+function Invoke-OsVersionPrompt {
+    param (
+        [Parameter(Mandatory)]
+        [string] $OperatingSystem,
+
+        [string] $default = $null,
+        [string] $label = 'Operating System Version'
+    )
+
+    $script:OsVersionsResult = $null
+    $script:OsVersionsError = $null
+
+    $result = Send-Event -Command 'os-version' -Parameters @{ action = 'list'; os = $OperatingSystem } -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:OsVersionsError = $Response.data.details
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:OsVersionsResult = $Response.data.osVersions
+        Complete-Request -Id $Response.id
+    }
+
+    if (-not $result) {
+        throw "Failed to retrieve operating system versions: service did not respond or response was invalid."
+    }
+
+    if ($script:OsVersionsError) {
+        throw "Service error: $script:OsVersionsError"
+    }
+
+    if (-not $script:OsVersionsResult -or $script:OsVersionsResult.Count -eq 0) {
+        Write-Warning "No versions found for operating system: $OperatingSystem"
+        return $null
+    }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $script:OsVersionsResult | ForEach-Object { $options.Items.Add($_) }
+
+    # if no valid $default provided, use the first element
+    if ($default -and $options.Items.Contains($default)) {
+        $options.DefaultValue = $default
+    }
+    else {
+        $options.DefaultValue = $options.Items[0]
+    }
+
+    $options.PageSize = 10
+
+    return [Sharprompt.Prompt]::Select[string]($options)
+}
 
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
     Invoke-LayoutPrompt, `
-	Invoke-LocalePrompt, `
-    Invoke-OperatingSystemPrompt
+    Invoke-LocalePrompt, `
+    Invoke-OperatingSystemPrompt, `
+    Invoke-OsVersionPrompt
