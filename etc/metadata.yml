@@ -1,0 +1,3 @@
+os: {{ OPERATING SYSTEM }}
+version: {{ OS_VERSION }}
+base_vm: {{ BASE_VM }}

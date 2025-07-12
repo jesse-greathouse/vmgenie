@@ -41,12 +41,11 @@ etc/
 
 ### Components
 
-✅ **Operating System Name** — top-level directory (e.g., `Ubuntu`, `Fedora`, `OpenSUSE`)
-✅ **Version Name** — second-level directory (e.g., `24.04`, `40`, `Tumbleweed`)
-✅ **Seed Data** — optional cloud‑init compatible files under `seed-data/`:
-
-* `meta-data`
-* `user-data`
+- ✅ **Operating System Name** — top-level directory (e.g., `Ubuntu`, `Fedora`, `OpenSUSE`)
+- ✅ **Version Name** — second-level directory (e.g., `24.04`, `40`, `Tumbleweed`)
+- ✅ **Seed Data** — optional cloud‑init compatible files under `seed-data/`:
+  - `meta-data`
+  - `user-data`
 
 ---
 
@@ -54,9 +53,9 @@ etc/
 
 When the user runs the PowerShell prompts:
 
-1️⃣ The service lists all directories under `etc/cloud/` to determine available operating systems.
-2️⃣ When the user selects an OS, the service lists all subdirectories under that OS to determine available versions.
-3️⃣ When provisioning, if `seed-data` files exist for the selected OS/version, they are used as part of the cloud‑init or ISO provisioning process.
+- 1️⃣ The service lists all directories under `etc/cloud/` to determine available operating systems.
+- 2️⃣ When the user selects an OS, the service lists all subdirectories under that OS to determine available versions.
+- 3️⃣ When provisioning, if `seed-data` files exist for the selected OS/version, they are used as part of the cloud‑init or ISO provisioning process.
 
 ---
 
@@ -92,11 +91,11 @@ notepad etc\cloud\Rocky\9\seed-data\user-data
 
 ## 📝 Best Practices
 
-* ✅ Use lowercase or standard names for OS and versions, but they can match upstream conventions (`Tumbleweed`, `24.04`, etc.).
-* ✅ Keep `seed-data` files valid YAML or text per cloud‑init specs.
-* ✅ Avoid spaces in directory names to keep things consistent.
-* ✅ Remove obsolete OS/version folders to prevent them appearing in the prompts.
-* ✅ Commit new templates into version control so they’re available to others.
+- ✅ Use lowercase or standard names for OS and versions, but they can match upstream conventions (`Tumbleweed`, `24.04`, etc.).
+- ✅ Keep `seed-data` files valid YAML or text per cloud‑init specs.
+- ✅ Avoid spaces in directory names to keep things consistent.
+- ✅ Remove obsolete OS/version folders to prevent them appearing in the prompts.
+- ✅ Commit new templates into version control so they’re available to others.
 
 ---
 
@@ -121,3 +120,70 @@ The newly added OS/version should appear in the list.
 | OS        | `etc/cloud/Ubuntu/`                 | Defines the operating system         |
 | Version   | `etc/cloud/Ubuntu/24.04/`           | Defines a specific version           |
 | Seed Data | `etc/cloud/Ubuntu/24.04/seed-data/` | Contains `meta-data` and `user-data` |
+
+## 📦 Product Artifact Directory Structure
+
+When you provision a new VM instance using a selected operating system and version template, VmGenie produces a **product directory** under `var/cloud/` named after the instance you specify (e.g., `foo` or `bar`).
+
+This directory contains everything needed to spawn and manage that specific VM instance, including rendered templates, keys, and metadata.
+
+---
+
+### 📁 Example: `var/cloud/foo/`
+
+```text
+var/cloud/
+└── foo/
+    ├── metadata.yml
+    ├── seed.iso
+    ├── seed-data/
+    │   ├── meta-data
+    │   └── user-data
+    ├── foo.pem
+    └── foo.pub
+```
+
+#### Artifact Components
+
+| File/Directory        | Description                                                                                                                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metadata.yml`        | Rendered YAML metadata describing the instance, rendered from `etc/metadata.yml` with placeholders replaced (e.g., `{{ OPERATING_SYSTEM }}`, `{{ OS_VERSION }}`, `{{ BASE_VM }}`). |
+| `seed.iso`            | Cloud‑init ISO image generated from the `seed-data/` files.                                                                                                                        |
+| `seed-data/meta-data` | Rendered meta‑data file (template from `etc/cloud/<os>/<version>/seed-data/meta-data`).                                                                                            |
+| `seed-data/user-data` | Rendered user‑data file (template from `etc/cloud/<os>/<version>/seed-data/user-data`).                                                                                            |
+| `foo.pem`             | Private SSH key for this instance.                                                                                                                                                 |
+| `foo.pub`             | Public SSH key for this instance.                                                                                                                                                  |
+
+---
+
+### 🚀 How the Artifacts Work
+
+When you invoke the provisioning flow (e.g., via `bin/make.ps1` or the API):
+
+- 1️⃣ The selected OS and version determine which `seed-data` templates from `etc/cloud/` to use.
+- 2️⃣ Placeholders like `{{ USERNAME }}`, `{{ TIMEZONE }}`, `{{ OPERATING_SYSTEM }}`, etc., are substituted based on user input and config.
+- 3️⃣ The rendered `meta-data` and `user-data` are written into `var/cloud/<instance>/seed-data/`.
+- 4️⃣ The `metadata.yml` is rendered from `etc/metadata.yml` and saved at the root of the instance directory.
+- 5️⃣ An SSH keypair (`<instance>.pem`, `<instance>.pub`) is generated if it doesn’t already exist.
+- 6️⃣ A `seed.iso` is generated from the `seed-data/` folder using a tool like `genisoimage` or equivalent.
+
+---
+
+### 📝 Notes
+
+- ✅ Each instance has its own isolated product directory under `var/cloud/`.
+- ✅ Keys and cloud‑init files are unique per instance.
+- ✅ `metadata.yml` serves as a machine‑readable manifest of the instance configuration.
+- ✅ You can safely delete an instance by removing its folder under `var/cloud/`.
+
+---
+
+### 📄 Artifact Summary Table
+
+| Level         | Path Example                     | Description                          |
+| ------------- | -------------------------------- | ------------------------------------ |
+| Instance Root | `var/cloud/foo/`                 | Instance‑specific folder             |
+| Metadata      | `var/cloud/foo/metadata.yml`     | Rendered manifest                    |
+| Seed ISO      | `var/cloud/foo/seed.iso`         | Cloud‑init ISO                       |
+| Seed Data     | `var/cloud/foo/seed-data/`       | Rendered `meta-data` and `user-data` |
+| SSH Keys      | `var/cloud/foo/foo.pem` + `.pub` | SSH key pair                         |
