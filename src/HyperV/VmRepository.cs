@@ -1,7 +1,8 @@
 using System;
+using System.Collections.Generic;
+
 using Microsoft.Management.Infrastructure;
 using Microsoft.Management.Infrastructure.Options;
-using System.Collections.Generic;
 
 namespace VmGenie.HyperV;
 

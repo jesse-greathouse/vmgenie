@@ -1,51 +1,57 @@
 function Add-Key {
-<#
+    <#
 .SYNOPSIS
-Generates an SSH RSA key pair for a given VM name using ssh-keygen.
+Generates an SSH RSA key pair for a given VM name at a specified path.
 
 .DESCRIPTION
-Generates a 4096-bit RSA key pair with no passphrase, placing the keys
-in the default OpenSSH key location. The key comment is set to the VM name
-for easy identification.
+Generates a 4096-bit RSA key pair, with no passphrase, and saves the keys
+to the specified directory, naming them <Name>.pem and <Name>.pub.
 
 .PARAMETER Name
-The name of the VM. This will be used as the key comment to help associate
-the key with the VM.
+The name of the VM. This is used for the key comment and file names.
+
+.PARAMETER OutputDirectory
+The directory where the key pair should be saved.
 #>
 
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [string] $Name
+        [string] $Name,
+
+        [Parameter(Mandatory)]
+        [string] $OutputDirectory
     )
 
     if (-not (Get-Command ssh-keygen.exe -ErrorAction SilentlyContinue)) {
-        throw "❌ OpenSSH 'ssh-keygen.exe' not found on this system. Install it via 'Optional Features' or run: Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"
+        throw "❌ OpenSSH 'ssh-keygen.exe' not found on this system."
     }
+
+    if (-not (Test-Path $OutputDirectory)) {
+        New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+    }
+
+    $privateKeyPath = Join-Path $OutputDirectory "$Name.pem"
+    $publicKeyPath = "$privateKeyPath.pub"
 
     Write-Host "[INFO] Generating SSH key pair for VM: $Name" -ForegroundColor Cyan
 
-    # Build command
-    $cmd = @(
-        'ssh-keygen.exe',
-        '-t', 'rsa',
-        '-b', '4096',
-        '-C', $Name,
-        '-N', ''
-    )
-
-    # Run ssh-keygen interactively to let it save in default location
-    & $cmd
+    & ssh-keygen.exe `
+        -t rsa `
+        -b 4096 `
+        -C $Name `
+        -N '' `
+        -f $privateKeyPath
 
     if ($LASTEXITCODE -ne 0) {
         throw "❌ ssh-keygen failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "[OK] SSH key pair generated for VM: $Name" -ForegroundColor Green
+    Write-Host "[OK] SSH key pair generated at: $privateKeyPath / $publicKeyPath" -ForegroundColor Green
 }
 
 function Remove-Key {
-<#
+    <#
 .SYNOPSIS
 Deletes the SSH key pair associated with a given VM name from the default location.
 
@@ -84,7 +90,7 @@ The name of the VM. Used to find the public key comment and remove the pair.
 
 
 function Update-Key {
-<#
+    <#
 .SYNOPSIS
 Rotates the SSH key pair by deleting the old one and creating a new one for the given VM name.
 

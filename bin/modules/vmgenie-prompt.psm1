@@ -18,6 +18,38 @@ function Invoke-UsernamePrompt {
     )
 }
 
+function Invoke-InstancePrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Instance Name'
+    }
+
+    return [Sharprompt.Prompt]::Input[string](
+        $label,
+        $value
+    )
+}
+
+function Invoke-HostnamePrompt {
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Host Name'
+    }
+
+    return [Sharprompt.Prompt]::Input[string](
+        $label,
+        $value
+    )
+}
+
 function Invoke-TimezonePrompt {
     param (
         [string] $value,
@@ -63,7 +95,8 @@ function Invoke-TimezonePrompt {
     # If a current value exists and is in the list, use it as default
     if ($value -and $timezones.Contains($value)) {
         $default = $value
-    } else {
+    }
+    else {
         $default = $null
     }
 
@@ -285,7 +318,9 @@ function Invoke-OsVersionPrompt {
 
 function Invoke-VmPrompt {
     param (
-        [string] $label = 'Select Virtual Machine'
+        [string] $label = 'Select Virtual Machine',
+        [string] $Os,
+        [string] $Version
     )
 
     $script:VmResult = $null
@@ -334,8 +369,29 @@ function Invoke-VmPrompt {
 
     $options.PageSize = $options.Items.Count
 
-    # Default to first VM
-    $options.DefaultValue = $options.Items[0]
+    # Compute default
+    $defaultVm = $null
+
+    if ($Os -or $Version) {
+        $bestMatch = $options.Items |
+        Sort-Object {
+            $score = 0
+            if ($Os -and ($_ -match [regex]::Escape($Os))) { $score++ }
+            if ($Version -and ($_ -match [regex]::Escape($Version))) { $score++ }
+            -1 * $score  # negate so higher score is sorted first
+        } |
+        Select-Object -First 1
+
+        if ($bestMatch) {
+            $defaultVm = $bestMatch
+        }
+    }
+
+    if (-not $defaultVm) {
+        $defaultVm = $options.Items[0]
+    }
+
+    $options.DefaultValue = $defaultVm
 
     $selectedName = [Sharprompt.Prompt]::Select[string]($options)
 
@@ -349,4 +405,6 @@ Export-ModuleMember -Function `
     Invoke-LocalePrompt, `
     Invoke-OperatingSystemPrompt, `
     Invoke-OsVersionPrompt, `
-    Invoke-VmPrompt
+    Invoke-VmPrompt, `
+    Invoke-InstancePrompt, `
+    Invoke-HostnamePrompt
