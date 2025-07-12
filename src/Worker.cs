@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipes;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -52,16 +54,40 @@ public class Worker : BackgroundService
     {
         _logger.LogInformation("VmGenie Service started at: {time}", DateTimeOffset.Now);
 
+        var ps = new PipeSecurity();
+
+        // Allow SYSTEM full control
+        ps.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            PipeAccessRights.FullControl,
+            AccessControlType.Allow));
+
+        // Allow Administrators full control
+        ps.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            PipeAccessRights.FullControl,
+            AccessControlType.Allow));
+
+        // Allow Authenticated Users read/write
+        ps.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                using var pipeServer = new NamedPipeServerStream(
+                var pipeServer = NamedPipeServerStreamAcl.Create(
                     "vmgenie",
                     PipeDirection.InOut,
                     1,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    PipeOptions.Asynchronous,
+                    inBufferSize: 0,
+                    outBufferSize: 0,
+                    pipeSecurity: ps
+                );
 
                 _logger.LogInformation("Waiting for client connection on named pipe...");
 
@@ -70,6 +96,8 @@ public class Worker : BackgroundService
                 _logger.LogInformation("Client connected.");
 
                 await HandleClient(pipeServer, stoppingToken);
+
+                pipeServer.Dispose();
             }
             catch (OperationCanceledException)
             {

@@ -19,11 +19,12 @@ public class Program
         var yamlPath = Path.Combine(applicationDir, ".vmgenie-cfg.yml");
         var config = LoadConfiguration(yamlPath);
 
-        EventHandlerEngine engine = new EventHandlerEngine();
+        EventHandlerEngine engine = new();
 
         engine.Register("status", new EventHandlers.StatusHandler());
         engine.Register("operating-system", new EventHandlers.OperatingSystemHandler(config));
         engine.Register("os-version", new EventHandlers.OsVersionHandler(config));
+        engine.Register("vm", new EventHandlers.VmHandler());
 
         engine.Freeze();
 

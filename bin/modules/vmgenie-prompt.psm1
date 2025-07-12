@@ -222,7 +222,7 @@ function Invoke-OperatingSystemPrompt {
         $options.DefaultValue = $default
     }
 
-    $options.PageSize = 10
+    $options.PageSize = $options.Items.Count
 
     return [Sharprompt.Prompt]::Select[string]($options)
 }
@@ -278,9 +278,68 @@ function Invoke-OsVersionPrompt {
         $options.DefaultValue = $options.Items[0]
     }
 
-    $options.PageSize = 10
+    $options.PageSize = $options.Items.Count
 
     return [Sharprompt.Prompt]::Select[string]($options)
+}
+
+function Invoke-VmPrompt {
+    param (
+        [string] $label = 'Select Virtual Machine'
+    )
+
+    $script:VmResult = $null
+    $script:VmError = $null
+
+    # Query the service for the VM list
+    $result = Send-Event -Command 'vm' -Parameters @{ action = 'list' } -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            # Use the raw data string for the error message
+            $script:VmError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:VmResult = $Response.data.vms
+        Complete-Request -Id $Response.id
+    }
+
+    if (-not $result) {
+        throw "Failed to retrieve VM list: service did not respond or response was invalid."
+    }
+
+    if ($script:VmError) {
+        throw "Service error: $script:VmError"
+    }
+
+    if (-not $script:VmResult -or $script:VmResult.Count -eq 0) {
+        throw "No VMs returned from service."
+    }
+
+    # Build a hashtable: display name → VM object
+    $vmMap = @{}
+
+    foreach ($vm in $script:VmResult) {
+        $displayName = $vm.Name
+        $vmMap[$displayName] = $vm
+    }
+
+    # Prepare SharpPrompt
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $vmMap.Keys | ForEach-Object { $options.Items.Add($_) }
+
+    $options.PageSize = $options.Items.Count
+
+    # Default to first VM
+    $options.DefaultValue = $options.Items[0]
+
+    $selectedName = [Sharprompt.Prompt]::Select[string]($options)
+
+    return $vmMap[$selectedName]
 }
 
 Export-ModuleMember -Function `
@@ -289,4 +348,5 @@ Export-ModuleMember -Function `
     Invoke-LayoutPrompt, `
     Invoke-LocalePrompt, `
     Invoke-OperatingSystemPrompt, `
-    Invoke-OsVersionPrompt
+    Invoke-OsVersionPrompt, `
+    Invoke-VmPrompt
