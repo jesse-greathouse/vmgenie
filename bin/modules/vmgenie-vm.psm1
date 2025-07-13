@@ -2,6 +2,7 @@ Import-Module "$PSScriptRoot\vmgenie-prompt.psm1"
 Import-Module "$PSScriptRoot\vmgenie-key.psm1"
 Import-Module "$PSScriptRoot\vmgenie-template.psm1"
 Import-Module "$PSScriptRoot\vmgenie-config.psm1"
+Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 
 function Publish-VmArtifact {
     <#
@@ -42,7 +43,6 @@ The path to the created artifact directory.
     # Paths
     $artifactDir = Join-Path -Path "var/cloud" -ChildPath $instance
     $seedDataDir = Join-Path -Path $artifactDir -ChildPath "seed-data"
-    $seedIsoPath = Join-Path -Path $artifactDir -ChildPath "seed.iso"
     $metadataPath = Join-Path -Path $artifactDir -ChildPath "metadata.yml"
     $privKeyPath = Join-Path -Path $artifactDir -ChildPath ("$instance.pem")
     $pubKeyPath = Join-Path -Path $artifactDir -ChildPath ("$instance.pem.pub")
@@ -62,7 +62,7 @@ The path to the created artifact directory.
         'INSTANCE'         = $instance
         'OPERATING_SYSTEM' = $os
         'OS_VERSION'       = $osVersion
-        'BASE_VM'          = $baseVmObj.Id   # <- Use the CIM ID
+        'BASE_VM'          = $baseVmObj.Id
         'HOSTNAME'         = $hostname
         'USERNAME'         = $username
         'TIMEZONE'         = $timezone
@@ -93,12 +93,65 @@ The path to the created artifact directory.
         -OutputPath $userDataOutput `
         -Variables $variables
 
-    # Create dummy seed.iso (placeholder — implement ISO creation later)
-    Set-Content -Path $seedIsoPath -Value "[placeholder for seed.iso]" -Encoding utf8
-    Write-Host "[INFO] Created dummy seed.iso (implement ISO creation later)" -ForegroundColor Yellow
+    # Call the ISO creation
+    Publish-SeedIso -InstanceName $instance
 
     Write-Host "[✅] VM artifact created successfully in: $artifactDir" -ForegroundColor Green
     return $artifactDir
 }
 
-Export-ModuleMember -Function Publish-VmArtifact
+function Publish-SeedIso {
+    <#
+.SYNOPSIS
+Request the VmGenie service to generate a cloud-init seed.iso for a given instance.
+
+.DESCRIPTION
+Sends an `artifact` command to the VmGenie service via named pipe with
+`action=create` and the `instanceName`. The service performs all path validation
+and ISO creation internally.
+
+.PARAMETER InstanceName
+The name of the instance (e.g., "my-instance"). Must correspond to a directory
+under CLOUD_DIR on the server side.
+
+.EXAMPLE
+Publish-SeedIso -InstanceName test5
+#>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $InstanceName
+    )
+
+    Write-Host "[INFO] Requesting seed.iso creation for instance '$InstanceName' from service..."
+
+    $parameters = @{
+        action       = 'create'
+        instanceName = $InstanceName
+    }
+
+    $isoPath = $null
+
+    $response = Send-Event -Command 'artifact' -Parameters $parameters -Handler {
+        param($Response)
+
+        if ($Response.status -ne 'ok') {
+            throw "[❌] Failed to create ISO: $($Response.data.details)"
+        }
+
+        Write-Host "[✅] Seed ISO created: $($Response.data.isoPath)" -ForegroundColor Green
+        $script:isoPath = $Response.data.isoPath
+
+        Complete-Request -Id $Response.id
+    }
+
+    if ($null -eq $response) {
+        throw "[ERROR] No response received from service."
+    }
+
+    return $isoPath
+}
+
+Export-ModuleMember -Function `
+    Publish-VmArtifact, `
+    Publish-SeedIso

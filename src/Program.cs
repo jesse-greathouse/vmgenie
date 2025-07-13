@@ -25,6 +25,7 @@ public class Program
         engine.Register("operating-system", new EventHandlers.OperatingSystemHandler(config));
         engine.Register("os-version", new EventHandlers.OsVersionHandler(config));
         engine.Register("vm", new EventHandlers.VmHandler());
+        engine.Register("artifact", new EventHandlers.ArtifactHandler(config));
 
         engine.Freeze();
 
@@ -55,12 +56,9 @@ public class Program
         using var key = Registry.LocalMachine.OpenSubKey(regPath);
         var value = key?.GetValue(regValue) as string;
 
-        if (string.IsNullOrWhiteSpace(value) || !Directory.Exists(value))
-        {
-            throw new InvalidOperationException("Invalid or missing APPLICATION_DIR in registry.");
-        }
-
-        return value;
+        return string.IsNullOrWhiteSpace(value) || !Directory.Exists(value)
+            ? throw new InvalidOperationException("Invalid or missing APPLICATION_DIR in registry.")
+            : value;
     }
 
     private static Config LoadConfiguration(string yamlPath)
@@ -72,9 +70,8 @@ public class Program
         var yamlContent = File.ReadAllText(yamlPath);
         var config = deserializer.Deserialize<Config>(yamlContent);
 
-        if (config == null || string.IsNullOrWhiteSpace(config.ApplicationDir))
-            throw new InvalidOperationException("Invalid configuration: ApplicationDir missing.");
-
-        return config;
+        return config == null || string.IsNullOrWhiteSpace(config.ApplicationDir)
+            ? throw new InvalidOperationException("Invalid configuration: ApplicationDir missing.")
+            : config;
     }
 }
