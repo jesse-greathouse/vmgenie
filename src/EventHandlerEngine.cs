@@ -5,10 +5,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Logging;
+
 namespace VmGenie;
 
-public class EventHandlerEngine
+public class EventHandlerEngine(ILogger<EventHandlerEngine> logger)
 {
+    private readonly ILogger<EventHandlerEngine> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
     private readonly ConcurrentDictionary<string, List<IEventHandler>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -19,10 +23,9 @@ public class EventHandlerEngine
         if (_frozen)
             throw new InvalidOperationException("Cannot register handlers after engine is frozen.");
 
+        ArgumentNullException.ThrowIfNull(handler);
         if (string.IsNullOrWhiteSpace(command))
             throw new ArgumentException("Command cannot be null or empty.", nameof(command));
-
-        ArgumentNullException.ThrowIfNull(handler);
 
         _handlers.AddOrUpdate(
             command,
@@ -34,17 +37,9 @@ public class EventHandlerEngine
             });
     }
 
-    /// Call this when starting the server to make the map immutable.
-    public void Freeze()
-    {
-        _frozen = true;
-    }
+    public void Freeze() => _frozen = true;
 
-    /// Returns the list of registered command keys.
-    public List<string> GetRegisteredCommands()
-    {
-        return [.. _handlers.Keys];
-    }
+    public List<string> GetRegisteredCommands() => [.. _handlers.Keys];
 
     public async Task DispatchAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
@@ -53,6 +48,7 @@ public class EventHandlerEngine
 
         if (!_handlers.TryGetValue(evt.Command, out var handlers) || handlers.Count == 0)
         {
+            _logger.LogWarning("Unknown command: {Command}", evt.Command);
             await ctx.SendResponseAsync(
                 EventResponse.Error(evt, $"Unknown command: {evt.Command}"),
                 token
@@ -72,6 +68,7 @@ public class EventHandlerEngine
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Handler for command '{Command}' threw: {Message}", evt.Command, ex.Message);
             await ctx.SendResponseAsync(
                 EventResponse.Error(evt, ex.Message),
                 token

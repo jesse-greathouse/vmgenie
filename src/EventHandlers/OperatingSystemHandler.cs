@@ -11,53 +11,40 @@ using VmGenie.Template;
 /// Handles the "operating-system" resource command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class OperatingSystemHandler(Config config) : IEventHandler
+public class OperatingSystemHandler(OperatingSystemTemplateRepository repository) : IEventHandler
 {
-    private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly OperatingSystemTemplateRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
 
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
-        var repository = new OperatingSystemTemplateRepository(_config);
-
         string action = GetAction(evt);
-
         object? data;
 
         switch (action)
         {
             case "list":
-                data = HandleList(repository);
+                data = HandleList(_repository);
                 break;
-
             case "details":
-                data = HandleDetails(evt, repository, out var detailsError);
+                data = HandleDetails(evt, _repository, out var error);
                 if (data is null)
                 {
-                    await SendErrorAndReturnNull(ctx, evt, detailsError!, token);
+                    await SendErrorAndReturnNull(ctx, evt, error!, token);
                     return;
                 }
                 break;
-
             case "help":
                 data = HandleHelp();
                 break;
-
             default:
                 await ctx.SendResponseAsync(
-                    EventResponse.Error(evt, $"Unknown action: '{action}'. Valid actions are: list, details, help."),
-                    token);
+                    EventResponse.Error(evt, $"Unknown action: '{action}'"), token);
                 return;
         }
 
         if (data is null) return;
 
-        var response = new EventResponse(
-            evt.Id,
-            evt.Command,
-            EventStatus.OK,
-            data
-        );
-
+        var response = new EventResponse(evt.Id, evt.Command, EventStatus.OK, data);
         await ctx.SendResponseAsync(response, token);
     }
 

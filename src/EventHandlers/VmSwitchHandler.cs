@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,12 +11,11 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vmswitch" command and responds based on 'action' parameter.
 /// Supported actions: list, help (default).
 /// </summary>
-public class VmSwitchHandler : IEventHandler
+public class VmSwitchHandler(VmSwitchRepository repository) : IEventHandler
 {
+    private readonly VmSwitchRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
-        var repository = new VmSwitchRepository();
-
         string action = GetAction(evt);
 
         object? data;
@@ -23,7 +23,7 @@ public class VmSwitchHandler : IEventHandler
         switch (action)
         {
             case "list":
-                data = HandleList(repository);
+                data = HandleList(_repository);
                 break;
 
             case "help":

@@ -11,9 +11,6 @@ public class OperatingSystemTemplateRepository
 
     public OperatingSystemTemplateRepository(Config config)
     {
-        ArgumentNullException.ThrowIfNull(config);
-        if (string.IsNullOrWhiteSpace(config.Etc)) throw new InvalidOperationException("Config.Etc is not set.");
-
         _etcCloudPath = Path.Combine(config.Etc, "cloud");
 
         if (!Directory.Exists(_etcCloudPath))

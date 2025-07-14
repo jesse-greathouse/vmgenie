@@ -7,6 +7,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 
+using VmGenie.HyperV;
+using VmGenie.Template;
+
 using YamlDotNet.Serialization;
 
 namespace VmGenie;
@@ -19,17 +22,6 @@ public class Program
         var yamlPath = Path.Combine(applicationDir, ".vmgenie-cfg.yml");
         var config = LoadConfiguration(yamlPath);
 
-        EventHandlerEngine engine = new();
-
-        engine.Register("status", new EventHandlers.StatusHandler());
-        engine.Register("operating-system", new EventHandlers.OperatingSystemHandler(config));
-        engine.Register("os-version", new EventHandlers.OsVersionHandler(config));
-        engine.Register("vm", new EventHandlers.VmHandler());
-        engine.Register("vm-switch", new EventHandlers.VmSwitchHandler());
-        engine.Register("artifact", new EventHandlers.ArtifactHandler(config));
-
-        engine.Freeze();
-
         await Host.CreateDefaultBuilder(args)
             .UseWindowsService(options => options.ServiceName = ServiceMetadata.ServiceName)
             .ConfigureLogging(logging =>
@@ -41,7 +33,11 @@ public class Program
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
-                services.AddSingleton(engine);
+                services.AddSingleton<OperatingSystemTemplateRepository>();
+                services.AddSingleton<VmRepository>();
+                services.AddSingleton<VmSwitchRepository>();
+                services.AddSingleton<VmHelpers>();
+                services.AddSingleton(provider => EventHandlerEngineBuilder.Build(provider));
                 services.AddHostedService<Worker>();
             })
             .Build()

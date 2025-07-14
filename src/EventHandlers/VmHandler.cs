@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,12 +11,11 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vm" command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class VmHandler : IEventHandler
+public class VmHandler(VmRepository repository) : IEventHandler
 {
+    private readonly VmRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
-        var repository = new VmRepository();
-
         string action = GetAction(evt);
 
         object? data;
@@ -23,11 +23,11 @@ public class VmHandler : IEventHandler
         switch (action)
         {
             case "list":
-                data = HandleList(repository);
+                data = HandleList(_repository);
                 break;
 
             case "details":
-                data = HandleDetails(evt, repository, out var detailsError);
+                data = HandleDetails(evt, _repository, out var detailsError);
                 if (data is null)
                 {
                     await SendErrorAndReturnNull(ctx, evt, detailsError!, token);

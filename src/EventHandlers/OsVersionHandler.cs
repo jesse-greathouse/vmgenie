@@ -12,14 +12,12 @@ namespace VmGenie.EventHandlers;
 /// Supported actions: list, help (default).
 /// Requires parameter: 'os'.
 /// </summary>
-public class OsVersionHandler(Config config) : IEventHandler
+public class OsVersionHandler(OperatingSystemTemplateRepository repository) : IEventHandler
 {
-    private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly OperatingSystemTemplateRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
 
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
-        var repository = new OperatingSystemTemplateRepository(_config);
-
         string action = GetAction(evt);
 
         object? data;
@@ -27,7 +25,7 @@ public class OsVersionHandler(Config config) : IEventHandler
         switch (action)
         {
             case "list":
-                data = await HandleListAsync(evt, repository, ctx, token);
+                data = await HandleListAsync(evt, _repository, ctx, token);
                 break;
 
             case "help":
