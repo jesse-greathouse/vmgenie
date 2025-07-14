@@ -25,6 +25,7 @@ public class Program
         engine.Register("operating-system", new EventHandlers.OperatingSystemHandler(config));
         engine.Register("os-version", new EventHandlers.OsVersionHandler(config));
         engine.Register("vm", new EventHandlers.VmHandler());
+        engine.Register("vm-switch", new EventHandlers.VmSwitchHandler());
         engine.Register("artifact", new EventHandlers.ArtifactHandler(config));
 
         engine.Freeze();

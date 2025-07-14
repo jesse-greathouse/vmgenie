@@ -15,6 +15,9 @@ public class Config
     [YamlMember(Alias = "USERNAME")]
     public string Username { get; set; } = string.Empty;
 
+    [YamlMember(Alias = "VM_SWITCH")]
+    public string VmSwitch { get; set; } = string.Empty;
+
     [YamlMember(Alias = "TIMEZONE")]
     public string Timezone { get; set; } = string.Empty;
 

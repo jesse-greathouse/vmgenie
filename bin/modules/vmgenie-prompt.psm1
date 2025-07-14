@@ -398,6 +398,75 @@ function Invoke-VmPrompt {
     return $vmMap[$selectedName]
 }
 
+function Invoke-VmSwitchPrompt {
+    param (
+        [string] $default = $null,
+        [string] $label = 'Select Virtual Switch'
+    )
+
+    $script:VmSwitchResult = $null
+    $script:VmSwitchError = $null
+
+    # Query the service for the VM switches
+    $result = Send-Event -Command 'vm-switch' -Parameters @{ action = 'list' } -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:VmSwitchError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:VmSwitchResult = $Response.data.switches
+        Complete-Request -Id $Response.id
+    }
+
+    if (-not $result) {
+        throw "Failed to retrieve virtual switch list: service did not respond or response was invalid."
+    }
+
+    if ($script:VmSwitchError) {
+        throw "Service error: $script:VmSwitchError"
+    }
+
+    if (-not $script:VmSwitchResult -or $script:VmSwitchResult.Count -eq 0) {
+        throw "No virtual switches returned from service."
+    }
+
+    # Build a map: display name → switch object
+    $switchMap = @{}
+    $defaultName = $null
+
+    foreach ($sw in $script:VmSwitchResult) {
+        $displayName = $sw.Name
+        $switchMap[$displayName] = $sw
+
+        # If a default GUID is provided, find the corresponding display name
+        if ($default -and $sw.Id -eq $default) {
+            $defaultName = $displayName
+        }
+    }
+
+    # Prepare SharpPrompt
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $label
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $switchMap.Keys | ForEach-Object { $options.Items.Add($_) }
+
+    $options.PageSize = $options.Items.Count
+
+    if ($defaultName -and $options.Items.Contains($defaultName)) {
+        $options.DefaultValue = $defaultName
+    }
+    else {
+        $options.DefaultValue = $options.Items[0]
+    }
+
+    $selectedName = [Sharprompt.Prompt]::Select[string]($options)
+
+    return $switchMap[$selectedName]
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -407,4 +476,5 @@ Export-ModuleMember -Function `
     Invoke-OsVersionPrompt, `
     Invoke-VmPrompt, `
     Invoke-InstancePrompt, `
-    Invoke-HostnamePrompt
+    Invoke-HostnamePrompt, `
+    Invoke-VmSwitchPrompt

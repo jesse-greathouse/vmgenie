@@ -34,6 +34,10 @@ The path to the created artifact directory.
     $baseVmObj = Invoke-VmPrompt -Os $os -Version $osVersion
     Write-Host "V Selected Base VM: $($baseVmObj.Name) [ID: $($baseVmObj.Id)]" -ForegroundColor Cyan
 
+    # capture VM switch
+    $vmSwitchObj = Invoke-VmSwitchPrompt -value $cfg.VM_SWITCH
+    Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
+
     $hostname = Invoke-HostnamePrompt -value $instance
     $username = Invoke-UsernamePrompt  -value $cfg.USERNAME
     $timezone = Invoke-TimezonePrompt  -value $cfg.TIMEZONE
@@ -63,6 +67,7 @@ The path to the created artifact directory.
         'OPERATING_SYSTEM' = $os
         'OS_VERSION'       = $osVersion
         'BASE_VM'          = $baseVmObj.Id
+        'VM_SWITCH'        = $vmSwitchObj.Id
         'HOSTNAME'         = $hostname
         'USERNAME'         = $username
         'TIMEZONE'         = $timezone

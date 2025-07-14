@@ -32,7 +32,7 @@ public class ArtifactHandler(Config config) : IEventHandler
     }
 
 #pragma warning disable IDE0046 // Convert to conditional expression
-    // Doing this as a conditional expression is very hard to read here.
+    // Doing this as a conditional expression is very hard to read.
     private static string GetAction(Event evt)
     {
         if (evt.Parameters.TryGetValue("action", out var actionObj) &&

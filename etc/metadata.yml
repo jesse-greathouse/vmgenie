@@ -1,3 +1,4 @@
 os: {{ OPERATING_SYSTEM }}
 version: {{ OS_VERSION }}
 base_vm: {{ BASE_VM }}
+vm_switch: {{ VM_SWITCH }}

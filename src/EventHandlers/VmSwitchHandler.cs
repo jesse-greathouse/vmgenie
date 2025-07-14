@@ -1,24 +1,20 @@
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-using VmGenie.Template;
+using VmGenie.HyperV;
 
 namespace VmGenie.EventHandlers;
 
 /// <summary>
-/// Handles the "os-version" resource command and responds based on 'action' parameter.
+/// Handles the "vmswitch" command and responds based on 'action' parameter.
 /// Supported actions: list, help (default).
-/// Requires parameter: 'os'.
 /// </summary>
-public class OsVersionHandler(Config config) : IEventHandler
+public class VmSwitchHandler : IEventHandler
 {
-    private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
-
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
-        var repository = new OperatingSystemTemplateRepository(_config);
+        var repository = new VmSwitchRepository();
 
         string action = GetAction(evt);
 
@@ -27,7 +23,7 @@ public class OsVersionHandler(Config config) : IEventHandler
         switch (action)
         {
             case "list":
-                data = await HandleListAsync(evt, repository, ctx, token);
+                data = HandleList(repository);
                 break;
 
             case "help":
@@ -66,59 +62,30 @@ public class OsVersionHandler(Config config) : IEventHandler
 
         return "help";
     }
-
-    private static string GetOs(Event evt)
-    {
-        if (evt.Parameters.TryGetValue("os", out object? osObj) &&
-            osObj is System.Text.Json.JsonElement elem &&
-            elem.ValueKind == System.Text.Json.JsonValueKind.String)
-        {
-            var os = elem.GetString()?.Trim();
-            if (!string.IsNullOrWhiteSpace(os))
-                return os;
-        }
-
-        throw new ArgumentException("Missing or invalid required parameter: 'os'.");
-    }
 #pragma warning restore IDE0046
 
-    private static async Task<object?> HandleListAsync(Event evt, OperatingSystemTemplateRepository repo, IWorkerContext ctx, CancellationToken token)
+    private static object HandleList(VmSwitchRepository repository)
     {
-        string osName;
-        try
+        var switches = repository.GetAll();
+        return new
         {
-            osName = GetOs(evt);
-        }
-        catch (ArgumentException ex)
-        {
-            await ctx.SendResponseAsync(
-                EventResponse.Error(evt, ex.Message),
-                token
-            );
-            return null;
-        }
-
-        var versions = repo.GetVersionsFor(osName);
-
-        return new Dictionary<string, object>
-            {
-                { "osVersions", versions }
-            };
+            switches
+        };
     }
 
     private static Dictionary<string, object> HandleHelp()
     {
         var help = new Dictionary<string, object>
         {
-            ["description"] = "The 'os-version' command allows you to query available versions for a given operating system.",
+            ["description"] = "The 'vmswitch' command allows you to query Hyper-V virtual switches.",
             ["actions"] = new[]
             {
-                new Dictionary<string, string> { ["action"] = "list", ["description"] = "Lists all available versions of the given operating system. Requires parameter: 'os'." },
+                new Dictionary<string, string> { ["action"] = "list", ["description"] = "Lists all Hyper-V virtual switches." },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
             {
-                new Dictionary<string, object> { ["action"] = "list", ["parameters"] = new { action = "list", os = "Ubuntu" } },
+                new Dictionary<string, object> { ["action"] = "list", ["parameters"] = new { action = "list" } },
                 new Dictionary<string, object> { ["action"] = "help", ["parameters"] = new { action = "help" } }
             }
         };
