@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Management.Infrastructure;
 using Microsoft.Management.Infrastructure.Options;
 
@@ -10,7 +11,9 @@ public class VmRepository
 {
     private readonly CimSession _session;
 
-    public VmRepository()
+    private readonly ILogger<VmRepository> _logger;
+
+    public VmRepository(ILogger<VmRepository> logger)
     {
         var options = new DComSessionOptions
         {
@@ -18,7 +21,9 @@ public class VmRepository
         };
 
         _session = CimSession.Create(null, options);
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+        _logger.LogInformation("VmRepository initialized with DCOM session.");
     }
 
     public List<Vm> GetAll()
@@ -33,7 +38,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            vms.Add(Vm.FromCimInstance(_session, system));
+            vms.Add(Vm.FromCimInstance(_session, system, _logger, includeHostResourcePath: false));
         }
 
         return vms;
@@ -52,7 +57,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            return Vm.FromCimInstance(_session, system);
+            return Vm.FromCimInstance(_session, system, _logger);
         }
 
         return null;
@@ -73,7 +78,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            vms.Add(Vm.FromCimInstance(_session, system));
+            vms.Add(Vm.FromCimInstance(_session, system, _logger, includeHostResourcePath: false));
         }
 
         return vms;

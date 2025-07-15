@@ -3,6 +3,7 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using VmGenie.EventHandlers;
 using VmGenie.HyperV;
 using VmGenie.Template;
 
@@ -20,12 +21,13 @@ public static class EventHandlerEngineBuilder
 
         var engine = new EventHandlerEngine(logger);
 
-        engine.Register("status", new EventHandlers.StatusHandler());
-        engine.Register("operating-system", new EventHandlers.OperatingSystemHandler(osRepo));
-        engine.Register("os-version", new EventHandlers.OsVersionHandler(osRepo));
-        engine.Register("vm", new EventHandlers.VmHandler(vmRepo));
-        engine.Register("vm-switch", new EventHandlers.VmSwitchHandler(vmSwitchRepo));
-        engine.Register("artifact", new EventHandlers.ArtifactHandler(config));
+        engine.Register("status", new StatusHandler());
+        engine.Register("operating-system", new OperatingSystemHandler(osRepo));
+        engine.Register("os-version", new OsVersionHandler(osRepo));
+        engine.Register("vm", new VmHandler(vmRepo));
+        engine.Register("vm-switch", new VmSwitchHandler(vmSwitchRepo));
+        engine.Register("artifact", new ArtifactHandler(config));
+        engine.Register("vhdx", new VhdxHandler(services.GetRequiredService<VmHelpers>()));
 
         engine.Freeze();
 

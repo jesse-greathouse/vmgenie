@@ -254,6 +254,9 @@ function Invoke-OperatingSystemPrompt {
     if ($default -and $options.Items.Contains($default)) {
         $options.DefaultValue = $default
     }
+    else {
+        $options.DefaultValue = $options.Items[0]
+    }
 
     $options.PageSize = $options.Items.Count
 
@@ -467,6 +470,62 @@ function Invoke-VmSwitchPrompt {
     return $switchMap[$selectedName]
 }
 
+function Invoke-MergeAvhdxPrompt {
+    <#
+.SYNOPSIS
+Prompt the user to choose whether to merge the differencing disk into the parent
+or simply use the parent VHDX.
+
+.DESCRIPTION
+Displays a two-option menu:
+- Merge Into Parent (destructive): returns $true
+- Use Parent (non-destructive): returns $false
+
+This value can be used to populate the MERGE_AVHDX field in templates.
+
+.OUTPUTS
+[bool] — $true if the user chooses to merge, $false otherwise.
+#>
+
+    param (
+        [string] $value,
+        [string] $label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($label)) {
+        $label = 'Use Virtual Hard Drive Parent or Merge Differencing Disk?'
+    }
+
+    $optionsList = [System.Collections.Generic.List[string]]::new()
+    @(
+        'Merge Into Parent — this will remove all disk checkpoints (destructive).',
+        'Use Parent — this will ignore all checkpoints and revert to the parent state.'
+    ) | ForEach-Object { $optionsList.Add($_) }
+
+    # default to 'Use Parent' if $value isn’t explicitly requesting merge
+    if ($value -and $optionsList.Contains($value)) {
+        $default = $value
+    }
+    else {
+        $default = 'Use Parent — this will ignore all checkpoints and revert to the parent state.'
+    }
+
+    $options = [Sharprompt.SelectOptions[string]]::new()
+    $options.Message = $label
+    $options.Items = $optionsList
+    $options.DefaultValue = $default
+    $options.PageSize = 2
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+
+    if ($selected -like 'Merge Into Parent*') {
+        return $true
+    }
+    else {
+        return $false
+    }
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -477,4 +536,5 @@ Export-ModuleMember -Function `
     Invoke-VmPrompt, `
     Invoke-InstancePrompt, `
     Invoke-HostnamePrompt, `
-    Invoke-VmSwitchPrompt
+    Invoke-VmSwitchPrompt, `
+    Invoke-MergeAvhdxPrompt

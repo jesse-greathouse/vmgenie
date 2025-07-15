@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Management.Infrastructure;
 using Microsoft.Management.Infrastructure.Options;
 
@@ -12,15 +13,19 @@ namespace VmGenie.HyperV;
 public class VmSwitchRepository
 {
     private readonly CimSession _session;
+    private readonly ILogger<VmSwitchRepository> _logger;
 
-    public VmSwitchRepository()
+    public VmSwitchRepository(ILogger<VmSwitchRepository> logger)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
         var options = new DComSessionOptions
         {
             Impersonation = ImpersonationType.Impersonate
         };
 
         _session = CimSession.Create(null, options);
+        _logger.LogInformation("VmSwitchRepository initialized with DCOM session.");
     }
 
     public List<VmSwitch> GetAll()
@@ -36,14 +41,19 @@ public class VmSwitchRepository
 
             foreach (var instance in instances)
             {
-                switches.Add(VmSwitch.FromCimInstance(instance));
+                var sw = VmSwitch.FromCimInstance(instance);
+                _logger.LogInformation("Found switch: {Name} [{Id}]", sw.Name, sw.Id);
+                switches.Add(sw);
             }
         }
         catch (CimException ex)
         {
-            throw new InvalidOperationException("Failed to query Hyper-V virtual switches. Ensure Hyper-V is installed and WMI is functional.", ex);
+            _logger.LogError(ex, "Failed to query Hyper-V virtual switches.");
+            throw new InvalidOperationException(
+                "Failed to query Hyper-V virtual switches. Ensure Hyper-V is installed and WMI is functional.", ex);
         }
 
+        _logger.LogInformation("Total switches found: {Count}", switches.Count);
         return switches;
     }
 }

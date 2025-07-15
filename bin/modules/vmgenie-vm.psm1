@@ -34,6 +34,19 @@ The path to the created artifact directory.
     $baseVmObj = Invoke-VmPrompt -Os $os -Version $osVersion
     Write-Host "V Selected Base VM: $($baseVmObj.Name) [ID: $($baseVmObj.Id)]" -ForegroundColor Cyan
 
+    # determine if the VM is a differencing disk
+    $mergeAvhdx = $false
+
+    if (Get-IsDifferencingDisk -Guid $baseVmObj.Id) {
+        $warningMessage = "[WARNING] The virtual hard drive of '$($baseVmObj.Name)' is a differencing disk (.avhdx). " +
+        "Merging it into its parent will REMOVE all snapshots/checkpoints and is destructive."
+        Write-Host $warningMessage -ForegroundColor Yellow
+
+        $mergeAvhdx = Invoke-MergeAvhdxPrompt
+
+        Write-Host "[INFO] MERGE_AVHDX decision: $mergeAvhdx" -ForegroundColor Yellow
+    }
+
     # capture VM switch
     $vmSwitchObj = Invoke-VmSwitchPrompt -value $cfg.VM_SWITCH
     Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
@@ -74,6 +87,7 @@ The path to the created artifact directory.
         'LAYOUT'           = $layout
         'LOCALE'           = $locale
         'PRIVKEY'          = (Get-Content -Raw -Path $pubKeyPath)
+        'MERGE_AVHDX'      = $mergeAvhdx
     }
 
     # Render metadata.yml
@@ -157,6 +171,128 @@ Publish-SeedIso -InstanceName test5
     return $isoPath
 }
 
+function Copy-Vhdx {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $VmGuid,
+
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    $script:CopyVhdxResult = $null
+    $script:CopyVhdxError = $null
+
+    Write-Host "[INFO] Requesting VHDX clone for VM '$VmGuid' as '$Name' from service..."
+
+    $parameters = @{
+        action        = 'clone'
+        guid          = $VmGuid
+        instance_name = $Name
+    }
+
+    Send-Event -Command 'vhdx' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:CopyVhdxError = $Response.data
+        }
+        else {
+            $script:CopyVhdxResult = $Response.data.path
+        }
+
+        Complete-Request -Id $Response.id
+    }
+
+    if ($null -ne $script:CopyVhdxError) {
+        throw "[❌] Service Error: $script:CopyVhdxError"
+    }
+
+    Write-Host "[✅] VHDX cloned: $script:CopyVhdxResult" -ForegroundColor Green
+    return $script:CopyVhdxResult
+}
+
+function Get-IsDifferencingDisk {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $Guid
+    )
+
+    $script:IsDiffDiskError = $null
+    $script:IsDiffDiskResult = $false
+
+    $parameters = @{
+        action = 'is-differencing-disk'
+        guid   = $Guid
+    }
+
+    Send-Event -Command 'vhdx' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:IsDiffDiskError = $Response.data
+        }
+        else {
+            $value = $Response.data.isDifferencing
+            $script:IsDiffDiskResult = ConvertTo-Boolean $value
+        }
+
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($null -ne $script:IsDiffDiskError) {
+        throw "[❌] Service Error: $script:IsDiffDiskError"
+    }
+
+    return $script:IsDiffDiskResult
+}
+
+
+function ConvertTo-Boolean {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        $InputObject
+    )
+
+    # null or empty → false
+    if ($null -eq $InputObject) {
+        return $false
+    }
+
+    # unwrap if it's an enumerable but not a string
+    if ($InputObject -is [System.Collections.IEnumerable] -and -not ($InputObject -is [string])) {
+        $InputObject = @($InputObject) | Where-Object { $_ -ne $null } | Select-Object -First 1
+    }
+
+    # if already bool → done
+    if ($InputObject -is [bool]) {
+        return ($InputObject -eq $true)
+    }
+
+    # normalize to string if possible
+    if ($null -ne $InputObject) {
+        $str = ($InputObject.ToString() ?? "").Trim().ToLowerInvariant()
+    }
+    else {
+        $str = ""
+    }
+
+    switch ($str) {
+        'true' { return $true }
+        '1' { return $true }
+        'false' { return $false }
+        '0' { return $false }
+        default { return $false }
+    }
+}
+
 Export-ModuleMember -Function `
     Publish-VmArtifact, `
-    Publish-SeedIso
+    Publish-SeedIso, `
+    Copy-Vhdx, `
+    Get-IsDifferencingDisk, `
+    ConvertTo-Boolean
