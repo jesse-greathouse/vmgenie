@@ -129,7 +129,9 @@ public class VhdxManager(VmHelper vmHelper, ILogger<VhdxManager> logger)
             "Creating a checkpoint for VM '{Name}' [{Guid}] after merging to parent VHDX: {ParentVhdx}",
             vm.Name, vm.Id, parentVhdx);
 
-        string snapshotName = $"{vm.Name} - ({DateTime.Now:yyyyMMddHHmmss})";
+        string snapshotName = string.Format("{0} - ({1})",
+            vm.Name,
+            DateTime.Now.ToString("M/d/yyyy - h:mm:ss tt"));
 
         string command =
             $"Remove-VMHardDiskDrive -VMName '{vm.Name}' -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0; " +
