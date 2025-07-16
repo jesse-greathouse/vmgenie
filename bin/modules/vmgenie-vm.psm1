@@ -44,7 +44,7 @@ The path to the created artifact directory.
 
         $mergeAvhdx = Invoke-MergeAvhdxPrompt
 
-        Write-Host "[INFO] MERGE_AVHDX decision: $mergeAvhdx" -ForegroundColor Yellow
+        Write-Host "[INFO] MERGE_AVHDX decision: $mergeAvhdx" -ForegroundColor Cyan
     }
 
     # capture VM switch
@@ -61,18 +61,15 @@ The path to the created artifact directory.
     $artifactDir = Join-Path -Path "var/cloud" -ChildPath $instance
     $seedDataDir = Join-Path -Path $artifactDir -ChildPath "seed-data"
     $metadataPath = Join-Path -Path $artifactDir -ChildPath "metadata.yml"
-    $privKeyPath = Join-Path -Path $artifactDir -ChildPath ("$instance.pem")
     $pubKeyPath = Join-Path -Path $artifactDir -ChildPath ("$instance.pem.pub")
 
     # Create directories
     if (-not (Test-Path $seedDataDir)) {
         New-Item -ItemType Directory -Path $seedDataDir -Force | Out-Null
     }
-    Write-Host "[OK] Created artifact directory: $artifactDir" -ForegroundColor Green
 
     # Generate SSH keys directly into artifact dir
     Add-Key -Name $instance -OutputDirectory $artifactDir
-    Write-Host "[OK] SSH keys written: $privKeyPath / $pubKeyPath" -ForegroundColor Green
 
     # Prepare template variables
     $variables = @{
@@ -116,7 +113,6 @@ The path to the created artifact directory.
     Publish-SeedIso -InstanceName $instance
 
     Write-Host "[✅] VM artifact created successfully in: $artifactDir" -ForegroundColor Green
-    return $artifactDir
 }
 
 function Publish-SeedIso {
@@ -142,8 +138,6 @@ Publish-SeedIso -InstanceName test5
         [string] $InstanceName
     )
 
-    Write-Host "[INFO] Requesting seed.iso creation for instance '$InstanceName' from service..."
-
     $parameters = @{
         action       = 'create'
         instanceName = $InstanceName
@@ -158,7 +152,7 @@ Publish-SeedIso -InstanceName test5
             throw "[❌] Failed to create ISO: $($Response.data.details)"
         }
 
-        Write-Host "[✅] Seed ISO created: $($Response.data.isoPath)" -ForegroundColor Green
+        Write-Host "[OK] Seed ISO created → $($Response.data.isoPath)" -ForegroundColor Green
         $script:isoPath = $Response.data.isoPath
 
         Complete-Request -Id $Response.id
@@ -178,7 +172,10 @@ function Copy-Vhdx {
         [string] $VmGuid,
 
         [Parameter(Mandatory)]
-        [string] $Name
+        [string] $Name,
+
+        [Parameter()]
+        [bool] $MergeAvhdx = $false
     )
 
     $script:CopyVhdxResult = $null
@@ -190,6 +187,11 @@ function Copy-Vhdx {
         action        = 'clone'
         guid          = $VmGuid
         instance_name = $Name
+    }
+
+    if ($MergeAvhdx) {
+        $parameters['merge_avhdx'] = $true
+        Write-Host "[INFO] merge_avhdx: true (will merge differencing disk if applicable)"
     }
 
     Send-Event -Command 'vhdx' -Parameters $parameters -Handler {
@@ -212,6 +214,7 @@ function Copy-Vhdx {
     Write-Host "[✅] VHDX cloned: $script:CopyVhdxResult" -ForegroundColor Green
     return $script:CopyVhdxResult
 }
+
 
 function Get-IsDifferencingDisk {
     [CmdletBinding()]

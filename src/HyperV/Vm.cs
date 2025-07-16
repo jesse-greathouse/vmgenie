@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Linq;
 
 using Microsoft.Extensions.Logging;
@@ -39,7 +38,6 @@ public class Vm(
     public static Vm FromCimInstance(
         CimSession session,
         CimInstance system,
-        ILogger<VmRepository> logger,
         bool includeHostResourcePath = true
     )
     {
@@ -49,9 +47,9 @@ public class Vm(
         string id = system.CimInstanceProperties["Name"].Value?.ToString()
             ?? throw new InvalidOperationException("VM ID missing");
         string name = system.CimInstanceProperties["ElementName"].Value?.ToString() ?? "(Unnamed)";
-        string state = GetStateAsString(system.CimInstanceProperties["EnabledState"].Value);
+        string state = StateToString(system.CimInstanceProperties["EnabledState"].Value);
 
-        var settings = GetSettingsForVm(session, id, logger);
+        var settings = GetSettingsForVm(session, id);
         string? description = settings.CimInstanceProperties["Notes"].Value switch
         {
             string s => s,
@@ -68,84 +66,76 @@ public class Vm(
         string? hostResourcePath = null;
         if (includeHostResourcePath)
         {
-            hostResourcePath = ResolveVhdxPath(name, logger)
+            hostResourcePath = ResolveVhdxPath(name)
                 ?? throw new InvalidOperationException($"Could not resolve VHDX path for VM '{name}' ({id}).");
         }
 
         return new Vm(id, name, state, description, cpuCount, memoryMb, uptimeSeconds, creationTime, hostResourcePath, generation);
     }
 
-    private static CimInstance GetSettingsForVm(CimSession session, string vmId, ILogger logger)
+    /// <summary>
+    /// Retrieves the active Msvm_VirtualSystemSettingData for a given VM.
+    /// </summary>
+    public static CimInstance GetSettingsForVm(CimSession session, string vmId)
     {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(vmId);
+
         var vm = session.QueryInstances(Namespace, "WQL",
             $"SELECT * FROM Msvm_ComputerSystem WHERE Name = '{vmId.Replace("'", "''")}'")
             .FirstOrDefault() ?? throw new InvalidOperationException($"VM with id '{vmId}' not found.");
 
-        var settings = session.EnumerateAssociatedInstances(
+        var allSettings = session.EnumerateAssociatedInstances(
             Namespace, vm,
-            "Msvm_SettingsDefineState", "Msvm_VirtualSystemSettingData", null, null)
-            .FirstOrDefault() ?? throw new InvalidOperationException($"No settings found for VM: {vmId}");
+            "Msvm_SettingsDefineState",
+            "Msvm_VirtualSystemSettingData",
+            null, null).ToList();
 
-        return settings;
+        if (allSettings.Count == 0)
+        {
+            throw new InvalidOperationException($"No settings found for VM {vmId}");
+        }
+
+        var activeSetting = allSettings.FirstOrDefault(s =>
+        {
+            var desc = s.CimInstanceProperties["Description"]?.Value?.ToString();
+            var type = s.CimInstanceProperties["VirtualSystemType"]?.Value?.ToString();
+            var cfgId = s.CimInstanceProperties["ConfigurationID"]?.Value?.ToString();
+
+            bool isActive =
+                (desc?.Contains("active", StringComparison.OrdinalIgnoreCase) == true) ||
+                (type?.EndsWith("Realized", StringComparison.OrdinalIgnoreCase) == true) ||
+                (cfgId?.Equals(vmId, StringComparison.OrdinalIgnoreCase) == true);
+
+            return isActive;
+        }) ?? throw new InvalidOperationException($"No active settings found for VM {vmId}");
+
+        return activeSetting;
     }
 
     /// <summary>
     /// Resolves the VHDX path by calling pwsh.exe and running Get-VMHardDiskDrive.
     /// </summary>
-    private static string? ResolveVhdxPath(string vmName, ILogger logger)
+    private static string? ResolveVhdxPath(string vmName)
     {
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "pwsh",
-                Arguments = $"-Command \"Get-VMHardDiskDrive -VMName '{vmName}' | Select-Object -ExpandProperty Path\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            string command = $"Get-VMHardDiskDrive -VMName '{vmName}' | Select-Object -ExpandProperty Path";
+            string output = PowerShellHelper.Run(command);
 
-            using var process = Process.Start(psi)
-                ?? throw new InvalidOperationException("Failed to start PowerShell process (Process.Start returned null).");
-
-            string output = process.StandardOutput.ReadToEnd().Trim();
-            string error = process.StandardError.ReadToEnd().Trim();
-            process.WaitForExit();
-
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                logger.LogError("PowerShell error while resolving VHDX path: {Error}", error);
-                return null;
-            }
-
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                logger.LogInformation("Resolved VHDX path via PowerShell: {Path}", output);
-                return output;
-            }
-
-            logger.LogWarning("PowerShell returned no VHDX path for VM: {VmName}", vmName);
-            return null;
+            return !string.IsNullOrWhiteSpace(output) ? output : null;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Exception while resolving VHDX path via PowerShell for VM: {VmName}", vmName);
             return null;
         }
     }
 
-    private static string GetStateAsString(object? enabledState) =>
-        enabledState is ushort state ? state switch
-        {
-            2 => "Running",
-            3 => "Off",
-            32768 => "Paused",
-            32769 => "Suspended",
-            32770 => "Starting",
-            32771 => "Snapshotting",
-            32773 => "Saving",
-            32774 => "Stopping",
-            _ => "Unknown"
-        } : "Unknown";
+    public static string StateToString(VmState state) =>
+        Enum.IsDefined(typeof(VmState), state) ? state.ToString() : $"Unknown({(ushort)state})";
+
+    public static string StateToString(object? enabledState)
+    {
+        return enabledState is ushort stateValue ? StateToString((VmState)stateValue) : "Unknown";
+    }
 }

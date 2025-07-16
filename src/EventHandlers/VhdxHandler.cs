@@ -9,11 +9,11 @@ using VmGenie.HyperV;
 namespace VmGenie.EventHandlers;
 
 /// <summary>
-/// Handles the "vhdx" command with actions: clone, help.
+/// Handles the "vhdx" command with actions: clone, help, is-differencing-disk.
 /// </summary>
-public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
+public class VhdxHandler(VhdxManager vhdxManager) : IEventHandler
 {
-    private readonly VmHelpers _vmHelpers = vmHelpers ?? throw new ArgumentNullException(nameof(vmHelpers));
+    private readonly VhdxManager _vhdxManager = vhdxManager ?? throw new ArgumentNullException(nameof(vhdxManager));
 
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
@@ -43,7 +43,6 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
         await ctx.SendResponseAsync(response, token);
     }
 
-#pragma warning disable IDE0046
     private static string GetAction(Event evt)
     {
         if (evt.Parameters.TryGetValue("action", out object? actionObj) &&
@@ -55,7 +54,6 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
 
         return "help";
     }
-#pragma warning restore IDE0046
 
     private async Task<object?> HandleIsDifferencingDiskAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
@@ -76,7 +74,7 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
 
         try
         {
-            bool isDifferencing = _vmHelpers.IsDifferencingDisk(guid);
+            bool isDifferencing = _vhdxManager.IsDifferencingDisk(guid);
 
             return new
             {
@@ -95,6 +93,7 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
     {
         string? guid = null;
         string? instanceName = null;
+        bool mergeAvhdx = false;
 
         if (evt.Parameters.TryGetValue("guid", out var guidObj) &&
             guidObj is JsonElement guidElem &&
@@ -108,6 +107,29 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
             nameElem.ValueKind == JsonValueKind.String)
         {
             instanceName = nameElem.GetString()?.Trim();
+        }
+
+        if (evt.Parameters.TryGetValue("merge_avhdx", out var mergeObj) &&
+            mergeObj is JsonElement mergeElem)
+        {
+            // Interpret truthy values explicitly.
+            if (mergeElem.ValueKind == JsonValueKind.True)
+            {
+                mergeAvhdx = true;
+            }
+            else if (mergeElem.ValueKind == JsonValueKind.String)
+            {
+                var str = mergeElem.GetString()?.Trim().ToLowerInvariant();
+                if (str == "true" || str == "1" || str == "yes" || str == "on")
+                {
+                    mergeAvhdx = true;
+                }
+            }
+            else if (mergeElem.ValueKind == JsonValueKind.Number &&
+                        mergeElem.TryGetInt32(out var num) && num != 0)
+            {
+                mergeAvhdx = true;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(guid))
@@ -124,7 +146,7 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
 
         try
         {
-            string newVhdxPath = _vmHelpers.CloneBaseVhdx(guid, instanceName);
+            string newVhdxPath = _vhdxManager.CloneBaseVhdx(guid, instanceName, mergeAvhdx);
 
             return new
             {
@@ -139,6 +161,7 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
         }
     }
 
+
     private static Dictionary<string, object> HandleHelp()
     {
         var help = new Dictionary<string, object>
@@ -146,44 +169,44 @@ public class VhdxHandler(VmHelpers vmHelpers) : IEventHandler
             ["description"] = "The 'vhdx' command allows you to manage a base VM's VHDX disk.",
             ["actions"] = new[]
             {
-            new Dictionary<string, string>
-            {
-                ["action"] = "clone",
-                ["description"] = "Clones a base VM's VHDX file. Requires: 'guid', 'instance_name'"
-            },
-            new Dictionary<string, string>
-            {
-                ["action"] = "is-differencing-disk",
-                ["description"] = "Checks if the VM's VHDX is a differencing disk (.avhdx). Requires: 'guid'"
-            },
-            new Dictionary<string, string>
-            {
-                ["action"] = "help",
-                ["description"] = "Displays this help message."
-            }
-        },
-            ["exampleRequests"] = new[]
-            {
-            new Dictionary<string, object>
-            {
-                ["action"] = "clone",
-                ["parameters"] = new Dictionary<string, object>
+                new Dictionary<string, string>
                 {
                     ["action"] = "clone",
-                    ["guid"] = "YOUR-VM-GUID",
-                    ["instance_name"] = "new-instance-name"
-                }
-            },
-            new Dictionary<string, object>
-            {
-                ["action"] = "is-differencing-disk",
-                ["parameters"] = new Dictionary<string, object>
+                    ["description"] = "Clones a base VM's VHDX file. Requires: 'guid', 'instance_name'"
+                },
+                new Dictionary<string, string>
                 {
                     ["action"] = "is-differencing-disk",
-                    ["guid"] = "YOUR-VM-GUID"
+                    ["description"] = "Checks if the VM's VHDX is a differencing disk (.avhdx). Requires: 'guid'"
+                },
+                new Dictionary<string, string>
+                {
+                    ["action"] = "help",
+                    ["description"] = "Displays this help message."
+                }
+            },
+            ["exampleRequests"] = new[]
+            {
+                new Dictionary<string, object>
+                {
+                    ["action"] = "clone",
+                    ["parameters"] = new Dictionary<string, object>
+                    {
+                        ["action"] = "clone",
+                        ["guid"] = "YOUR-VM-GUID",
+                        ["instance_name"] = "new-instance-name"
+                    }
+                },
+                new Dictionary<string, object>
+                {
+                    ["action"] = "is-differencing-disk",
+                    ["parameters"] = new Dictionary<string, object>
+                    {
+                        ["action"] = "is-differencing-disk",
+                        ["guid"] = "YOUR-VM-GUID"
+                    }
                 }
             }
-        }
         };
 
         return new Dictionary<string, object> { ["help"] = help };

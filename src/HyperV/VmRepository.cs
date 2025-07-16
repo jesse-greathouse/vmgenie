@@ -13,7 +13,7 @@ public class VmRepository
 
     private readonly ILogger<VmRepository> _logger;
 
-    public VmRepository(ILogger<VmRepository> logger)
+    public VmRepository(ILogger<VmRepository> logger, ILoggerFactory loggerFactory)
     {
         var options = new DComSessionOptions
         {
@@ -38,7 +38,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            vms.Add(Vm.FromCimInstance(_session, system, _logger, includeHostResourcePath: false));
+            vms.Add(Vm.FromCimInstance(_session, system, includeHostResourcePath: false));
         }
 
         return vms;
@@ -57,7 +57,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            return Vm.FromCimInstance(_session, system, _logger);
+            return Vm.FromCimInstance(_session, system);
         }
 
         return null;
@@ -78,7 +78,7 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            vms.Add(Vm.FromCimInstance(_session, system, _logger, includeHostResourcePath: false));
+            vms.Add(Vm.FromCimInstance(_session, system, includeHostResourcePath: false));
         }
 
         return vms;

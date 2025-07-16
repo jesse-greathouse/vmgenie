@@ -34,9 +34,12 @@ public class Program
             {
                 services.AddSingleton(config);
                 services.AddSingleton<OperatingSystemTemplateRepository>();
+                services.AddSingleton<VmHelper>();
                 services.AddSingleton<VmRepository>();
                 services.AddSingleton<VmSwitchRepository>();
-                services.AddSingleton<VmHelpers>();
+                services.AddSingleton<VmLifecycleService>();
+                services.AddSingleton<VmProvisioningService>();
+                services.AddSingleton<VhdxManager>();
                 services.AddSingleton(provider => EventHandlerEngineBuilder.Build(provider));
                 services.AddHostedService<Worker>();
             })
