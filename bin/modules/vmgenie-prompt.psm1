@@ -320,17 +320,28 @@ function Invoke-OsVersionPrompt {
 }
 
 function Invoke-VmPrompt {
+    [CmdletBinding()]
     param (
         [string] $label = 'Select Virtual Machine',
         [string] $Os,
-        [string] $Version
+        [string] $Version,
+
+        [ValidateSet('all', 'exclude', 'only')]
+        [string] $Provisioned = 'all'
     )
 
     $script:VmResult = $null
     $script:VmError = $null
 
+    # Build parameters for service request
+    $parameters = @{ action = 'list' }
+
+    if ($Provisioned -ne 'all') {
+        $parameters.provisioned = $Provisioned
+    }
+
     # Query the service for the VM list
-    $result = Send-Event -Command 'vm' -Parameters @{ action = 'list' } -Handler {
+    $result = Send-Event -Command 'vm' -Parameters $parameters -Handler {
         param ($Response)
 
         if ($Response.status -ne 'ok') {

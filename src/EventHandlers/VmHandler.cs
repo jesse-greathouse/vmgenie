@@ -24,7 +24,7 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
         switch (action)
         {
             case "list":
-                data = HandleList(_repository);
+                data = HandleList(evt, _repository);
                 break;
 
             case "details":
@@ -79,9 +79,27 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
     }
 #pragma warning restore IDE0046
 
-    private static object HandleList(VmRepository repository)
+    private static object HandleList(Event evt, VmRepository repository)
     {
-        var vms = repository.GetAll();
+        // Default to All
+        var filter = VmRepository.ProvisionedFilter.All;
+
+        if (evt.Parameters.TryGetValue("provisioned", out var provObj) &&
+            provObj is System.Text.Json.JsonElement elem &&
+            elem.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            var provValue = elem.GetString()?.Trim().ToLowerInvariant();
+
+            filter = provValue switch
+            {
+                "exclude" => VmRepository.ProvisionedFilter.ExcludeProvisioned,
+                "only" => VmRepository.ProvisionedFilter.OnlyProvisioned,
+                _ => VmRepository.ProvisionedFilter.All
+            };
+        }
+
+        var vms = repository.GetAll(filter);
+
         return new
         {
             vms
@@ -193,14 +211,20 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
             ["description"] = "The 'vm' command allows you to query Hyper-V virtual machines.",
             ["actions"] = new[]
             {
-                new Dictionary<string, string> { ["action"] = "list", ["description"] = "Lists all Hyper-V virtual machines." },
+                new Dictionary<string, string> {
+                    ["action"] = "list",
+                    ["description"] = "Lists Hyper-V virtual machines. Optional parameter: provisioned = all|exclude|only"
+                },
                 new Dictionary<string, string> { ["action"] = "details", ["description"] = "Shows details for a specific VM by its 'id'." },
                 new Dictionary<string, string> { ["action"] = "provision", ["description"] = "Provisions a new VM from a base VM GUID, instance name, and switch GUID." },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
             {
-                new Dictionary<string, object> { ["action"] = "list", ["parameters"] = new { action = "list" } },
+                new Dictionary<string, object> {
+                    ["action"] = "list",
+                    ["parameters"] = new { action = "list", provisioned = "only" }
+                },
                 new Dictionary<string, object> { ["action"] = "details", ["parameters"] = new { action = "details", id = "SOME-VM-ID" } },
                 new Dictionary<string, object> {
                     ["action"] = "provision",

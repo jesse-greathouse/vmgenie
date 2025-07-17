@@ -34,7 +34,7 @@ The path to the created artifact directory.
     $osVersion = Invoke-OsVersionPrompt -OperatingSystem $os
 
     # capture full VM object
-    $baseVmObj = Invoke-VmPrompt -Os $os -Version $osVersion
+    $baseVmObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude'
     Write-Host "V Selected Base VM: $($baseVmObj.Name) [ID: $($baseVmObj.Id)]" -ForegroundColor Cyan
 
     # determine if the VM is a differencing disk

@@ -40,6 +40,7 @@ public class Program
                 services.AddSingleton<VmLifecycleService>();
                 services.AddSingleton<VmProvisioningService>();
                 services.AddSingleton<VhdxManager>();
+                services.AddSingleton<Artifacts.InstanceRepository>();
                 services.AddSingleton(provider => EventHandlerEngineBuilder.Build(provider));
                 services.AddHostedService<Worker>();
             })
