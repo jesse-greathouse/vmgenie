@@ -11,9 +11,10 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vm" command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class VmHandler(VmRepository repository) : IEventHandler
+public class VmHandler(VmRepository repository, VmProvisioningService provisioner) : IEventHandler
 {
     private readonly VmRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly VmProvisioningService _provisioner = provisioner ?? throw new ArgumentNullException(nameof(provisioner));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
         string action = GetAction(evt);
@@ -33,6 +34,11 @@ public class VmHandler(VmRepository repository) : IEventHandler
                     await SendErrorAndReturnNull(ctx, evt, detailsError!, token);
                     return;
                 }
+                break;
+
+            case "provision":
+                data = await HandleProvisionAsync(evt, ctx, token);
+                if (data is null) return;
                 break;
 
             case "help":
@@ -112,6 +118,74 @@ public class VmHandler(VmRepository repository) : IEventHandler
         };
     }
 
+    private async Task<object?> HandleProvisionAsync(Event evt, IWorkerContext ctx, CancellationToken token)
+    {
+        if (!evt.Parameters.TryGetValue("baseVmGuid", out var baseVmGuidObj) ||
+            !evt.Parameters.TryGetValue("instanceName", out var instanceNameObj) ||
+            !evt.Parameters.TryGetValue("vmSwitchGuid", out var vmSwitchGuidObj))
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "Missing required parameters: baseVmGuid, instanceName, vmSwitchGuid."),
+                token);
+            return null;
+        }
+
+        var baseVmGuid = GetStringParam(baseVmGuidObj);
+        var instanceName = GetStringParam(instanceNameObj);
+        var vmSwitchGuid = GetStringParam(vmSwitchGuidObj);
+
+        if (string.IsNullOrWhiteSpace(baseVmGuid) ||
+            string.IsNullOrWhiteSpace(instanceName) ||
+            string.IsNullOrWhiteSpace(vmSwitchGuid))
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "Parameters cannot be empty or whitespace."),
+                token);
+            return null;
+        }
+
+        bool mergeDifferencingDisk = false;
+        if (evt.Parameters.TryGetValue("mergeDifferencingDisk", out var mergeObj))
+        {
+            if (mergeObj is System.Text.Json.JsonElement mergeElem &&
+                mergeElem.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                mergeDifferencingDisk = true;
+            }
+        }
+
+        int generation = 2; // default
+        if (evt.Parameters.TryGetValue("generation", out var genObj))
+        {
+            if (genObj is System.Text.Json.JsonElement genElem &&
+                genElem.TryGetInt32(out var parsedGen) &&
+                (parsedGen == 1 || parsedGen == 2))
+            {
+                generation = parsedGen;
+            }
+        }
+
+        Vm vm;
+        try
+        {
+            vm = _provisioner.ProvisionVm(baseVmGuid, instanceName, vmSwitchGuid, mergeDifferencingDisk, generation);
+        }
+        catch (Exception ex)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, $"Provisioning failed: {ex.Message}"),
+                token);
+            return null;
+        }
+
+        return new { vm };
+    }
+
+    private static string? GetStringParam(object? obj)
+    {
+        return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
+    }
+
     private static Dictionary<string, object> HandleHelp()
     {
         var help = new Dictionary<string, object>
@@ -121,12 +195,17 @@ public class VmHandler(VmRepository repository) : IEventHandler
             {
                 new Dictionary<string, string> { ["action"] = "list", ["description"] = "Lists all Hyper-V virtual machines." },
                 new Dictionary<string, string> { ["action"] = "details", ["description"] = "Shows details for a specific VM by its 'id'." },
+                new Dictionary<string, string> { ["action"] = "provision", ["description"] = "Provisions a new VM from a base VM GUID, instance name, and switch GUID." },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
             {
                 new Dictionary<string, object> { ["action"] = "list", ["parameters"] = new { action = "list" } },
-                new Dictionary<string, object> { ["action"] = "details", ["parameters"] = new { action = "details", id = "SOME-VM-ID" } }
+                new Dictionary<string, object> { ["action"] = "details", ["parameters"] = new { action = "details", id = "SOME-VM-ID" } },
+                new Dictionary<string, object> {
+                    ["action"] = "provision",
+                    ["parameters"] = new { action = "provision", baseVmGuid = "BASE-VM-GUID", instanceName = "my-new-vm", vmSwitchGuid = "SWITCH-GUID", mergeDifferencingDisk = false }
+                }
             }
         };
 

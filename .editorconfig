@@ -24,6 +24,10 @@ insert_final_newline = true
 [*.{csproj,props,targets}]
 indent_size = 2
 
+# Enforce LF for cloud-init templates
+[{meta-data,user-data,network-config}]
+end_of_line = lf
+
 #### .NET Coding Conventions ####
 [*.{cs,vb}]
 

@@ -26,8 +26,9 @@ public static class PowerShellHelper
         string error = process.StandardError.ReadToEnd().Trim();
         process.WaitForExit();
 
-        return process.ExitCode != 0 || string.IsNullOrWhiteSpace(output)
-            ? throw new InvalidOperationException($"pwsh command failed:\nCommand: {command}\nError: {error}")
+        return process.ExitCode != 0
+            ? throw new InvalidOperationException(
+                $"pwsh command failed:\nCommand:\n{command}\nExitCode: {process.ExitCode}\nError:\n{error}\nOutput:\n{output}")
             : output;
     }
 

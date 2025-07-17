@@ -1,8 +1,10 @@
 Import-Module "$PSScriptRoot\vmgenie-prompt.psm1"
+Import-Module "$PSScriptRoot\vmgenie-import.psm1"
 Import-Module "$PSScriptRoot\vmgenie-key.psm1"
 Import-Module "$PSScriptRoot\vmgenie-template.psm1"
 Import-Module "$PSScriptRoot\vmgenie-config.psm1"
 Import-Module "$PSScriptRoot\vmgenie-client.psm1"
+Import-YamlDotNet
 
 function Publish-VmArtifact {
     <#
@@ -20,6 +22,7 @@ The path to the created artifact directory.
     param ()
 
     # Bring in global application configuration to use for some default values
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
     $cfg = Get-Configuration
     if ($null -eq $cfg) { throw "[FATAL] Get-Configuration returned null." }
 
@@ -83,18 +86,18 @@ The path to the created artifact directory.
         'TIMEZONE'         = $timezone
         'LAYOUT'           = $layout
         'LOCALE'           = $locale
-        'PRIVKEY'          = (Get-Content -Raw -Path $pubKeyPath)
+        'PRIVKEY'          = ((Get-Content -Raw -Path $pubKeyPath).Trim())
         'MERGE_AVHDX'      = $mergeAvhdx
     }
 
     # Render metadata.yml
     Convert-Template `
-        -TemplatePath "etc/metadata.yml" `
+        -TemplatePath (Join-Path $repoRoot "etc/metadata.yml") `
         -OutputPath $metadataPath `
         -Variables $variables
 
     # Render seed-data/meta-data
-    $metaDataTemplate = Join-Path -Path "etc/cloud/$os/$osVersion/seed-data" -ChildPath "meta-data"
+    $metaDataTemplate = Join-Path -Path $repoRoot -ChildPath "etc/cloud/$os/$osVersion/seed-data/meta-data"
     $metaDataOutput = Join-Path -Path $seedDataDir -ChildPath "meta-data"
     Convert-Template `
         -TemplatePath $metaDataTemplate `
@@ -102,17 +105,124 @@ The path to the created artifact directory.
         -Variables $variables
 
     # Render seed-data/user-data
-    $userDataTemplate = Join-Path -Path "etc/cloud/$os/$osVersion/seed-data" -ChildPath "user-data"
+    $userDataTemplate = Join-Path -Path $repoRoot -ChildPath "etc/cloud/$os/$osVersion/seed-data/user-data"
     $userDataOutput = Join-Path -Path $seedDataDir -ChildPath "user-data"
     Convert-Template `
         -TemplatePath $userDataTemplate `
         -OutputPath $userDataOutput `
         -Variables $variables
 
+    # Render seed-data/network-config
+    $networkConfigTemplate = Join-Path -Path $repoRoot -ChildPath "etc/cloud/$os/$osVersion/seed-data/network-config"
+    $networkConfigOutput = Join-Path -Path $seedDataDir -ChildPath "network-config"
+    Convert-Template `
+        -TemplatePath $networkConfigTemplate `
+        -OutputPath $networkConfigOutput `
+        -Variables $variables
+
     # Call the ISO creation
     Publish-SeedIso -InstanceName $instance
 
     Write-Host "[✅] VM artifact created successfully in: $artifactDir" -ForegroundColor Green
+}
+
+function Invoke-ProvisionVm {
+    <#
+.SYNOPSIS
+Provisions a VM based on the artifacts and metadata in var/cloud/<InstanceName>.
+
+.DESCRIPTION
+Loads the metadata.yml for the given InstanceName, reads required parameters
+(base_vm, vm_switch, merge_avhdx) and sends a `vm` command with `action=provision`
+to the VmGenie service. Returns the provisioned VM DTO.
+
+.PARAMETER InstanceName
+The name of the instance (artifact directory) to provision.
+
+.EXAMPLE
+Invoke-ProvisionVm -InstanceName my-instance
+#>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $InstanceName
+    )
+
+    $artifactDir = Join-Path -Path "var/cloud" -ChildPath $InstanceName
+    $metadataFile = Join-Path -Path $artifactDir -ChildPath "metadata.yml"
+
+    if (-not (Test-Path $metadataFile)) {
+        throw "[❌] metadata.yml not found at: $metadataFile"
+    }
+
+    Write-Host "[INFO] Loading metadata from: $metadataFile" -ForegroundColor Cyan
+
+    # Read and parse YAML
+    $yaml = Get-Content -Raw -Path $metadataFile
+    $deserializer = [YamlDotNet.Serialization.DeserializerBuilder]::new().Build()
+    $reader = New-Object System.IO.StringReader($yaml)
+
+    $metadata = $deserializer.Deserialize(
+        $reader,
+        [System.Collections.Generic.Dictionary[string, object]]
+    )
+
+    if (-not $metadata) {
+        throw "[❌] Failed to deserialize metadata.yml."
+    }
+
+    # Extract required metadata
+    $baseVmGuid = $metadata['base_vm']
+    $vmSwitchGuid = $metadata['vm_switch']
+    $mergeDifferencingDisk = $false
+
+    if ($metadata.ContainsKey('merge_avhdx')) {
+        $mergeDifferencingDisk = ConvertTo-Boolean $metadata['merge_avhdx']
+    }
+
+    if (-not $baseVmGuid -or -not $vmSwitchGuid) {
+        throw "[❌] Metadata is missing required keys: base_vm and/or vm_switch."
+    }
+
+    Write-Host "[INFO] Base VM: $baseVmGuid" -ForegroundColor Cyan
+    Write-Host "[INFO] VM Switch: $vmSwitchGuid" -ForegroundColor Cyan
+    Write-Host "[INFO] Merge Differencing Disk: $mergeDifferencingDisk" -ForegroundColor Cyan
+
+    # Build parameters for service
+    $parameters = @{
+        action                = 'provision'
+        baseVmGuid            = $baseVmGuid
+        instanceName          = $InstanceName
+        vmSwitchGuid          = $vmSwitchGuid
+        mergeDifferencingDisk = $mergeDifferencingDisk
+    }
+
+    $script:ProvisionVmError = $null
+    $script:ProvisionedVm = $null
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:ProvisionVmError = $Response.data
+        }
+        else {
+            $script:ProvisionedVm = $Response.data.vm
+            Write-Host "[✅] VM provisioned successfully!" -ForegroundColor Green
+        }
+
+        Complete-Request -Id $Response.id
+    }
+
+    if ($null -ne $script:ProvisionVmError) {
+        throw "[❌] Service Error: $script:ProvisionVmError"
+    }
+
+    if ($null -eq $script:ProvisionedVm) {
+        throw "[ERROR] No response received or VM DTO was null."
+    }
+
+    return $script:ProvisionedVm
 }
 
 function Publish-SeedIso {
@@ -294,6 +404,7 @@ function ConvertTo-Boolean {
 }
 
 Export-ModuleMember -Function `
+    Invoke-ProvisionVm, `
     Publish-VmArtifact, `
     Publish-SeedIso, `
     Copy-Vhdx, `

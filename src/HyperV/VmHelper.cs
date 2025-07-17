@@ -31,6 +31,25 @@ public class VmHelper(VmRepository repo, ILogger<VmHelper> logger)
         return vm;
     }
 
+    public Vm? GetVmByName(string name)
+    {
+        var vms = _repo.GetAllByName(name);
+
+        if (vms.Count == 0)
+        {
+            _logger.LogDebug("No VM found with name '{Name}'.", name);
+            return null;
+        }
+
+        if (vms.Count > 1)
+            _logger.LogWarning("Multiple VMs found with name '{Name}'. Returning the first. Count={Count}", name, vms.Count);
+
+        var vm = vms[0];
+        _logger.LogDebug("VM {VmName} retrieved from repository.", name);
+
+        return vm;
+    }
+
     public string GetVhdxPathForVm(string vmGuid)
     {
         var vm = GetVm(vmGuid);
@@ -62,22 +81,43 @@ public class VmHelper(VmRepository repo, ILogger<VmHelper> logger)
     {
         const string ns = @"root\virtualization\v2";
 
+        if (job == null)
+            throw new ArgumentNullException(nameof(job), "Job instance is null.");
+
+        var jobPath = job.CimSystemProperties.Path?.ToString() ?? "(null)";
+        _logger.LogDebug("Waiting for job: {JobPath}", jobPath);
+
         while (true)
         {
             var currentJob = session.GetInstance(ns, job);
             var jobState = (JobState)(ushort)currentJob.CimInstanceProperties["JobState"].Value;
+
+            _logger.LogDebug("Job state: {JobState}", jobState);
 
             if (jobState == JobState.Completed)
             {
                 _logger.LogInformation("Job completed successfully.");
                 return;
             }
-            else if (jobState == JobState.Terminated || jobState == JobState.Exception)
+
+            if (jobState == JobState.Terminated || jobState == JobState.Exception)
             {
-                throw new InvalidOperationException($"Job failed with state {jobState}");
+                string errorDescription = currentJob.CimInstanceProperties["ErrorDescription"]?.Value?.ToString() ?? "(none)";
+                uint? errorCode = currentJob.CimInstanceProperties["ErrorCode"]?.Value as uint?;
+
+                _logger.LogError("Job failed: State={State}, ErrorDescription={Description}, ErrorCode={Code}, JobPath={JobPath}",
+                    jobState, errorDescription, errorCode?.ToString() ?? "(none)", jobPath);
+
+                // Optionally: dump all properties for inspection
+                foreach (var prop in currentJob.CimInstanceProperties)
+                {
+                    _logger.LogError("Job Property: {Name} = {Value}", prop.Name, prop.Value);
+                }
+
+                throw new InvalidOperationException(
+                    $"Job failed with state {jobState}. ErrorDescription: {errorDescription}, ErrorCode: {errorCode}");
             }
 
-            _logger.LogDebug("Job state: {JobState}, waiting…", jobState);
             Thread.Sleep(500);
         }
     }

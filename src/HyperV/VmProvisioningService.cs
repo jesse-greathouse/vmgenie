@@ -1,152 +1,141 @@
 using System;
 using System.IO;
-using System.Linq;
 
 using Microsoft.Extensions.Logging;
-using Microsoft.Management.Infrastructure;
 
 namespace VmGenie.HyperV;
 
-public class VmProvisioningService(VmHelper vmHelper, VhdxManager vhdxManager, ILogger<VmProvisioningService> logger, Config config)
+public class VmProvisioningService(
+    VmHelper vmHelper,
+    VhdxManager vhdxManager,
+    ILogger<VmProvisioningService> logger,
+    Config config)
 {
     private readonly VmHelper _vmHelper = vmHelper ?? throw new ArgumentNullException(nameof(vmHelper));
     private readonly VhdxManager _vhdxManager = vhdxManager ?? throw new ArgumentNullException(nameof(vhdxManager));
     private readonly ILogger<VmProvisioningService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
 
-    public Vm ProvisionVm(string baseVmGuid, string instanceName, string vmSwitchGuid, bool mergeDifferencingDisk = false)
+    public Vm ProvisionVm(string baseVmGuid, string instanceName, string vmSwitchGuid, bool mergeDifferencingDisk = false, int generation = 2)
     {
-        const string ns = @"root\virtualization\v2";
-        using var session = CimSession.Create(null);
-
-        _logger.LogInformation("Starting VM provisioning: BaseVM={BaseGuid}, Instance={InstanceName}, Switch={SwitchGuid}, MergeDiff={Merge}",
+        EnsureVmDoesNotExist(instanceName);
+        _logger.LogInformation(
+            "Starting VM provisioning: BaseVM={BaseGuid}, Instance={InstanceName}, Switch={SwitchGuid}, MergeDiff={Merge}",
             baseVmGuid, instanceName, vmSwitchGuid, mergeDifferencingDisk);
 
         string artifactDir = Path.Combine(_config.CloudDir, instanceName);
-        string isoPath = Path.Combine(artifactDir, "seed.iso");
+        string isoPath = GetIsoPath(artifactDir);
+        string clonedVhdx = _vhdxManager.CloneBaseVhdx(baseVmGuid, instanceName, mergeDifferencingDisk);
+        string switchName = ResolveSwitchName(vmSwitchGuid);
 
+        _logger.LogInformation("Provisioning VM '{InstanceName}' using PowerShell.", instanceName);
+
+        try
+        {
+            CreateVm(instanceName, clonedVhdx, switchName, generation);
+            if (generation == 2) ConfigureSecureBoot(instanceName);
+            EnsureDvdDriveExists(instanceName);
+            AttachIso(instanceName, isoPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PowerShell VM provisioning failed.");
+            throw new InvalidOperationException("PowerShell VM provisioning failed.", ex);
+        }
+
+        _logger.LogInformation("PowerShell VM provisioning completed successfully.");
+
+        return FetchProvisionedVm(instanceName);
+    }
+
+    private void EnsureVmDoesNotExist(string instanceName)
+    {
+        var vmExists = _vmHelper.GetVmByName(instanceName);
+        if (vmExists != null)
+        {
+            string msg = $"VM with name '{instanceName}' already exists in Hyper-V (Id: {vmExists.Id}). Provisioning aborted.";
+            _logger.LogError(msg);
+            throw new InvalidOperationException(msg);
+        }
+    }
+
+    private string GetIsoPath(string artifactDir)
+    {
+        string isoPath = Path.Combine(artifactDir, "seed.iso");
         if (!File.Exists(isoPath))
             throw new InvalidOperationException($"cloud-init ISO not found at: {isoPath}");
+        return isoPath;
+    }
 
-        string clonedVhdx = _vhdxManager.CloneBaseVhdx(baseVmGuid, instanceName, mergeDifferencingDisk);
+    private string ResolveSwitchName(string vmSwitchGuid)
+    {
+        string cmd = $"(Get-VMSwitch | Where-Object {{ $_.Id -eq '{vmSwitchGuid}' }}).Name";
+        string switchName = PowerShellHelper.Run(cmd);
+        if (string.IsNullOrWhiteSpace(switchName))
+            throw new InvalidOperationException($"Failed to resolve VM switch name for Id: {vmSwitchGuid}");
 
-        // Create new VM
-        var mgmtService = session.QueryInstances(ns, "WQL", "SELECT * FROM Msvm_VirtualSystemManagementService")
-            .FirstOrDefault() ?? throw new InvalidOperationException("Failed to locate VirtualSystemManagementService.");
+        _logger.LogInformation("Resolved VM switch: {SwitchId} -> {SwitchName}", vmSwitchGuid, switchName);
+        return switchName;
+    }
 
-        var vmSettings = new CimMethodParametersCollection
-        {
-            CimMethodParameter.Create("ElementName", instanceName, CimType.String, CimFlags.None)
-        };
+    private void CreateVm(string instanceName, string vhdxPath, string switchName, int generation)
+    {
+        string cmd = $@"
+New-VM -Name '{instanceName}' `
+    -Generation {generation} `
+    -MemoryStartupBytes 512MB `
+    -VHDPath '{vhdxPath}' `
+    -SwitchName '{switchName}' | Out-Null
+";
+        RunPowershellCommand("New-VM", cmd);
+    }
 
-        var createVmResult = session.InvokeMethod(mgmtService, "DefineVirtualSystem", vmSettings);
-        var vmInstance = createVmResult.OutParameters["ResultingSystem"]?.Value as CimInstance
-            ?? throw new InvalidOperationException("Failed to create new VM.");
+    private void ConfigureSecureBoot(string instanceName)
+    {
+        string cmd = $@"
+Set-VMFirmware -VMName '{instanceName}' `
+    -EnableSecureBoot On `
+    -SecureBootTemplate 'MicrosoftUEFICertificateAuthority' | Out-Null
+";
+        RunPowershellCommand("Set-VMFirmware", cmd);
+    }
 
-        _logger.LogInformation("Created VM: {VmPath}", vmInstance.CimSystemProperties.Path);
+    private void EnsureDvdDriveExists(string instanceName)
+    {
+        string cmd = $@"
+$dvd = Get-VMDvdDrive -VMName '{instanceName}' -ErrorAction SilentlyContinue
+if (-not $dvd) {{
+    Add-VMDvdDrive -VMName '{instanceName}' | Out-Null
+}}
+";
+        RunPowershellCommand("Ensure DVD drive exists", cmd);
+    }
 
-        // Attach cloned VHDX
-        AttachVhdx(session, vmInstance, clonedVhdx);
+    private void AttachIso(string instanceName, string isoPath)
+    {
+        string cmd = $@"
+Set-VMDvdDrive -VMName '{instanceName}' -Path '{isoPath}' | Out-Null
+";
+        RunPowershellCommand("Set-VMDvdDrive", cmd);
+    }
 
-        // Attach ISO
-        AttachIso(session, vmInstance, isoPath);
-
-        // Connect to VM Switch
-        ConnectVmToSwitch(session, vmInstance, vmSwitchGuid);
+    private Vm FetchProvisionedVm(string instanceName)
+    {
+        var vm = _vmHelper.GetVmByName(instanceName);
+        if (vm == null)
+            throw new InvalidOperationException($"Provisioned VM '{instanceName}' not found.");
 
         _logger.LogInformation("VM provisioning completed successfully: {InstanceName}", instanceName);
-
-        // Convert to Vm DTO
-        var vmDto = Vm.FromCimInstance(session, vmInstance);
-
-        return vmDto;
+        return vm;
     }
 
-    private void AttachVhdx(CimSession session, CimInstance vmInstance, string vhdxPath)
+    private void RunPowershellCommand(string description, string cmd)
     {
-        const string ns = @"root\virtualization\v2";
-
-        var disk = CreateResourceAllocationSettingData(session, ns,
-            "Microsoft:Hyper-V:Synthetic Disk Drive", 17, vhdxPath);
-
-        ApplyResource(session, vmInstance, disk);
-        _logger.LogInformation("Attached VHDX to VM: {VhdxPath}", vhdxPath);
-    }
-
-    private void AttachIso(CimSession session, CimInstance vmInstance, string isoPath)
-    {
-        const string ns = @"root\virtualization\v2";
-
-        var cdrom = CreateResourceAllocationSettingData(session, ns,
-            "Microsoft:Hyper-V:CD/DVD Drive", null, isoPath);
-
-        ApplyResource(session, vmInstance, cdrom);
-        _logger.LogInformation("Attached cloud-init ISO to VM: {IsoPath}", isoPath);
-    }
-
-    private void ConnectVmToSwitch(CimSession session, CimInstance vmInstance, string vmSwitchGuid)
-    {
-        const string ns = @"root\virtualization\v2";
-
-        var nic = CreateResourceAllocationSettingData(session, ns,
-            "Microsoft:Hyper-V:Synthetic Ethernet Port", null, $"\\\\\\\\?\\root\\virtualization\\v2\\Msvm_VirtualSwitch.Id=\"{vmSwitchGuid}\"");
-
-        ApplyResource(session, vmInstance, nic);
-        _logger.LogInformation("Connected VM to switch: {SwitchGuid}", vmSwitchGuid);
-    }
-
-    private CimInstance CreateResourceAllocationSettingData(CimSession session, string ns, string resourceType, ushort? deviceType, string hostResource)
-    {
-        var rasd = session.QueryInstances(ns, "WQL",
-            $"SELECT * FROM Msvm_ResourceAllocationSettingData WHERE ResourceSubType='{resourceType}' AND InstanceID LIKE '%Default%'")
-            .FirstOrDefault() ?? throw new InvalidOperationException($"Failed to locate RASD template for {resourceType}");
-
-        if (deviceType.HasValue)
-            rasd.CimInstanceProperties["AddressOnParent"].Value = deviceType.Value.ToString();
-
-        rasd.CimInstanceProperties["HostResource"].Value = new[] { hostResource };
-
-        return rasd;
-    }
-
-    private void ApplyResource(CimSession session, CimInstance vmPath, CimInstance resource)
-    {
-        const string ns = @"root\virtualization\v2";
-
-        var mgmtService = session.QueryInstances(ns, "WQL", "SELECT * FROM Msvm_VirtualSystemManagementService")
-            .FirstOrDefault() ?? throw new InvalidOperationException("Failed to locate VirtualSystemManagementService.");
-
-        var inParams = new CimMethodParametersCollection
-    {
-        CimMethodParameter.Create("TargetVirtualSystem", vmPath, CimType.Reference, CimFlags.None),
-        CimMethodParameter.Create("ResourceSettingData", new[] { resource.ToString() }, CimType.StringArray, CimFlags.None)
-    };
-
-        var result = session.InvokeMethod(mgmtService, "AddResourceSettings", inParams);
-
-        if (result.ReturnValue?.Value is not uint returnValue)
+        _logger.LogInformation("Running PowerShell {Description} command:\n{Command}", description, cmd.Trim());
+        string output = PowerShellHelper.Run(cmd);
+        if (!string.IsNullOrWhiteSpace(output))
         {
-            throw new InvalidOperationException("Failed to retrieve return value from AddResourceSettings.");
-        }
-
-        if (returnValue == 0)
-        {
-            _logger.LogInformation("Resource added synchronously.");
-        }
-        else if (returnValue == 4096)
-        {
-            var job = result.OutParameters["Job"]?.Value as CimInstance;
-            if (job == null)
-            {
-                throw new InvalidOperationException("AddResourceSettings returned 4096 but no job instance was provided.");
-            }
-
-            _logger.LogInformation("Resource addition started asynchronously: {JobPath}", job.CimSystemProperties.Path);
-            _vmHelper.WaitForJobCompletion(session, job);
-        }
-        else
-        {
-            throw new InvalidOperationException($"AddResourceSettings failed with return code: {returnValue}");
+            _logger.LogInformation("{Description} output:\n{Output}", description, output);
         }
     }
 }
