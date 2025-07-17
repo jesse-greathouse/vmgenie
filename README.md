@@ -37,6 +37,7 @@ A demonstration of a modern Virtual Machine provisioning tool for Hyper‑V on W
 - [🛠  Service Architecture & Extensibility](doc/service.md)
 - [📋 Client Module & Automation](doc/client.md)
 - [🧩 OS Templating](doc/template.md)
+- [✅ Base VM Checklist](doc/base-vm-checklist.md)
 
 ---
 
