@@ -11,10 +11,11 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vm" command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class VmHandler(VmRepository repository, VmProvisioningService provisioner) : IEventHandler
+public class VmHandler(VmRepository repository, VmProvisioningService provisioner, VmLifecycleService lifecycle) : IEventHandler
 {
     private readonly VmRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly VmProvisioningService _provisioner = provisioner ?? throw new ArgumentNullException(nameof(provisioner));
+    private readonly VmLifecycleService _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
         string action = GetAction(evt);
@@ -43,6 +44,30 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
 
             case "help":
                 data = HandleHelp();
+                break;
+
+            case "start":
+                data = HandleLifecycleAction(evt, _lifecycle.Start);
+                break;
+
+            case "stop":
+                data = HandleLifecycleAction(evt, _lifecycle.Stop);
+                break;
+
+            case "pause":
+                data = HandleLifecycleAction(evt, _lifecycle.Pause);
+                break;
+
+            case "resume":
+                data = HandleLifecycleAction(evt, _lifecycle.Resume);
+                break;
+
+            case "shutdown":
+                data = HandleLifecycleAction(evt, _lifecycle.Shutdown);
+                break;
+
+            case "state-check":
+                data = HandleStateCheck(evt, _lifecycle);
                 break;
 
             default:
@@ -79,18 +104,94 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
     }
 #pragma warning restore IDE0046
 
+    private static object? HandleLifecycleAction(Event evt, Action<string> lifecycleAction)
+    {
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement elem ||
+            elem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'id' parameter for lifecycle action.");
+        }
+
+        var vmId = elem.GetString();
+        if (string.IsNullOrWhiteSpace(vmId))
+        {
+            throw new ArgumentException("'id' parameter cannot be empty.");
+        }
+
+        lifecycleAction(vmId);
+
+        return new { id = vmId, status = "ok" };
+    }
+
+    private static object? HandleStateCheck(Event evt, VmLifecycleService lifecycle)
+    {
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement idElem ||
+            idElem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'id' parameter for state-check action.");
+        }
+
+        var vmId = idElem.GetString();
+        if (string.IsNullOrWhiteSpace(vmId))
+        {
+            throw new ArgumentException("'id' parameter cannot be empty.");
+        }
+
+        if (!evt.Parameters.TryGetValue("state", out var stateObj) ||
+            stateObj is not System.Text.Json.JsonElement stateElem ||
+            !stateElem.TryGetInt32(out var stateInt))
+        {
+            throw new ArgumentException("Missing or invalid 'state' parameter for state-check action.");
+        }
+
+        if (stateInt == VmLifecycleService.NetworkReadyState)
+        {
+            // Special handling for logical NetworkReady state
+            bool isReady = VmLifecycleService.IsNetworkReady(vmId);
+            return new
+            {
+                id = vmId,
+                desiredState = VmLifecycleService.NetworkReadyState,
+                currentState = isReady ? VmLifecycleService.NetworkReadyState : (int)VmLifecycleService.GetCurrentState(vmId),
+                matches = isReady
+            };
+        }
+
+        // Validate the real VmState
+        if (!Enum.IsDefined(typeof(VmState), (ushort)stateInt))
+        {
+            throw new ArgumentException($"Invalid VmState value: {stateInt}");
+        }
+
+        var desiredState = (VmState)(ushort)stateInt;
+        var currentState = VmLifecycleService.GetCurrentState(vmId);
+        var matches = currentState == desiredState;
+
+        return new
+        {
+            id = vmId,
+            desiredState,
+            currentState,
+            matches
+        };
+    }
+
     private static object HandleList(Event evt, VmRepository repository)
     {
         // Default to All
-        var filter = VmRepository.ProvisionedFilter.All;
+        var provisionedFilter = VmRepository.ProvisionedFilter.All;
+        VmState? stateFilter = null;
 
+        // parse provisioned param
         if (evt.Parameters.TryGetValue("provisioned", out var provObj) &&
-            provObj is System.Text.Json.JsonElement elem &&
-            elem.ValueKind == System.Text.Json.JsonValueKind.String)
+            provObj is System.Text.Json.JsonElement provElem &&
+            provElem.ValueKind == System.Text.Json.JsonValueKind.String)
         {
-            var provValue = elem.GetString()?.Trim().ToLowerInvariant();
+            var provValue = provElem.GetString()?.Trim().ToLowerInvariant();
 
-            filter = provValue switch
+            provisionedFilter = provValue switch
             {
                 "exclude" => VmRepository.ProvisionedFilter.ExcludeProvisioned,
                 "only" => VmRepository.ProvisionedFilter.OnlyProvisioned,
@@ -98,7 +199,18 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
             };
         }
 
-        var vms = repository.GetAll(filter);
+        // parse state param
+        if (evt.Parameters.TryGetValue("state", out var stateObj) &&
+            stateObj is System.Text.Json.JsonElement stateElem &&
+            stateElem.TryGetInt32(out var stateInt))
+        {
+            if (Enum.IsDefined(typeof(VmState), (ushort)stateInt))
+            {
+                stateFilter = (VmState)(ushort)stateInt;
+            }
+        }
+
+        var vms = repository.GetAll(provisionedFilter, stateFilter);
 
         return new
         {
@@ -213,22 +325,41 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
             {
                 new Dictionary<string, string> {
                     ["action"] = "list",
-                    ["description"] = "Lists Hyper-V virtual machines. Optional parameter: provisioned = all|exclude|only"
+                    ["description"] = "Lists Hyper-V virtual machines. Optional parameters: provisioned = all|exclude|only, state = numeric VmState enum value"
                 },
-                new Dictionary<string, string> { ["action"] = "details", ["description"] = "Shows details for a specific VM by its 'id'." },
-                new Dictionary<string, string> { ["action"] = "provision", ["description"] = "Provisions a new VM from a base VM GUID, instance name, and switch GUID." },
+                new Dictionary<string, string> {
+                    ["action"] = "details",
+                    ["description"] = "Shows details for a specific VM by its 'id'."
+                },
+                new Dictionary<string, string> {
+                    ["action"] = "provision",
+                    ["description"] = "Provisions a new VM from a base VM GUID, instance name, and switch GUID."
+                },
+                new Dictionary<string, string> { ["action"] = "start", ["description"] = "Starts a VM by id." },
+                new Dictionary<string, string> { ["action"] = "stop", ["description"] = "Stops a VM by id." },
+                new Dictionary<string, string> { ["action"] = "pause", ["description"] = "Pauses a VM by id." },
+                new Dictionary<string, string> { ["action"] = "resume", ["description"] = "Resumes a VM by id." },
+                new Dictionary<string, string> { ["action"] = "shutdown", ["description"] = "Gracefully shuts down a VM by id." },
+                new Dictionary<string, string> {
+                    ["action"] = "state-check",
+                    ["description"] = "Checks if a VM is currently in a specific state by id and state value."
+                },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
             {
                 new Dictionary<string, object> {
                     ["action"] = "list",
-                    ["parameters"] = new { action = "list", provisioned = "only" }
+                    ["parameters"] = new { action = "list", provisioned = "only", state = 2 }
                 },
                 new Dictionary<string, object> { ["action"] = "details", ["parameters"] = new { action = "details", id = "SOME-VM-ID" } },
                 new Dictionary<string, object> {
                     ["action"] = "provision",
                     ["parameters"] = new { action = "provision", baseVmGuid = "BASE-VM-GUID", instanceName = "my-new-vm", vmSwitchGuid = "SWITCH-GUID", mergeDifferencingDisk = false }
+                },
+                new Dictionary<string, object> {
+                    ["action"] = "state-check",
+                    ["parameters"] = new { action = "state-check", id = "SOME-VM-ID", state = 2 }
                 }
             }
         };

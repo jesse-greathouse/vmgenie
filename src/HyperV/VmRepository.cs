@@ -16,6 +16,7 @@ public class VmRepository
     private readonly ILogger<VmRepository> _logger;
 
     private readonly InstanceRepository _instanceRepo;
+    private readonly Dictionary<string, Instance> _artifactInstances = new(StringComparer.OrdinalIgnoreCase);
 
     public VmRepository(ILogger<VmRepository> logger, InstanceRepository instanceRepo)
     {
@@ -38,18 +39,25 @@ public class VmRepository
         OnlyProvisioned     // only provisioned
     }
 
-    public List<Vm> GetAll(ProvisionedFilter filter = ProvisionedFilter.All)
+    public List<Vm> GetAll(
+        ProvisionedFilter provisionedFilter = ProvisionedFilter.All,
+        VmState? stateFilter = null)
     {
         var vms = new List<Vm>();
         var whereClause = "Caption = 'Virtual Machine'";
 
-        if (filter == ProvisionedFilter.ExcludeProvisioned)
+        if (provisionedFilter == ProvisionedFilter.ExcludeProvisioned)
         {
             whereClause = BuildWhereClauseExcludingProvisioned(whereClause);
         }
-        else if (filter == ProvisionedFilter.OnlyProvisioned)
+        else if (provisionedFilter == ProvisionedFilter.OnlyProvisioned)
         {
             whereClause = BuildWhereClauseIncludingProvisioned(whereClause);
+        }
+
+        if (stateFilter != null)
+        {
+            whereClause += $" AND EnabledState = {(ushort)stateFilter.Value}";
         }
 
         var query = $"SELECT * FROM Msvm_ComputerSystem WHERE {whereClause}";
@@ -63,7 +71,10 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            var vm = Vm.FromCimInstance(_session, system, includeHostResourcePath: false);
+            var artifactInstance = GetArtifactInstance(
+                system.CimInstanceProperties["ElementName"].Value?.ToString() ?? string.Empty);
+
+            var vm = Vm.FromCimInstance(_session, system, includeHostResourcePath: false, artifactInstance: artifactInstance);
             vms.Add(vm);
         }
 
@@ -83,7 +94,10 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            return Vm.FromCimInstance(_session, system);
+            var artifactInstance = GetArtifactInstance(
+                system.CimInstanceProperties["ElementName"].Value?.ToString() ?? string.Empty);
+
+            return Vm.FromCimInstance(_session, system, artifactInstance: artifactInstance);
         }
 
         return null;
@@ -104,7 +118,10 @@ public class VmRepository
 
         foreach (var system in systems)
         {
-            vms.Add(Vm.FromCimInstance(_session, system, includeHostResourcePath: false));
+            var artifactInstance = GetArtifactInstance(
+                system.CimInstanceProperties["ElementName"].Value?.ToString() ?? string.Empty);
+
+            vms.Add(Vm.FromCimInstance(_session, system, includeHostResourcePath: false, artifactInstance: artifactInstance));
         }
 
         return vms;
@@ -112,7 +129,7 @@ public class VmRepository
 
     private string BuildWhereClauseExcludingProvisioned(string baseWhereClause)
     {
-        var provisionedNames = _instanceRepo.GetInstanceNames();
+        var provisionedNames = PopulateArtifactInstances();
 
         if (provisionedNames.Count == 0)
         {
@@ -133,7 +150,7 @@ public class VmRepository
 
     private string BuildWhereClauseIncludingProvisioned(string baseWhereClause)
     {
-        var provisionedNames = _instanceRepo.GetInstanceNames();
+        var provisionedNames = PopulateArtifactInstances();
 
         if (provisionedNames.Count == 0)
         {
@@ -156,4 +173,20 @@ public class VmRepository
 
         return $"{baseWhereClause} AND ({orClause})";
     }
+
+    private List<string> PopulateArtifactInstances()
+    {
+        _artifactInstances.Clear();
+        var instances = _instanceRepo.GetAll();
+
+        foreach (var instance in instances)
+        {
+            _artifactInstances[instance.Name] = instance;
+        }
+
+        return [.. _artifactInstances.Keys];
+    }
+
+    private Instance? GetArtifactInstance(string name) =>
+        _artifactInstances.TryGetValue(name, out var instance) ? instance : null;
 }

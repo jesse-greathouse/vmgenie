@@ -6,6 +6,295 @@ Import-Module "$PSScriptRoot\vmgenie-config.psm1"
 Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 Import-YamlDotNet
 
+# Define script-scoped VM state constants
+$script:VmState_Running       = 2
+$script:VmState_Off           = 3
+$script:VmState_Paused        = 6
+$script:VmState_Suspended     = 7
+$script:VmState_ShuttingDown  = 4
+$script:VmState_Starting      = 10
+$script:VmState_Snapshotting  = 11
+$script:VmState_Saving        = 32773
+$script:VmState_Stopping      = 32774
+$script:VmState_NetworkReady  = 9999
+
+$script:VmStateMap = @{
+    2      = 'Running'
+    3      = 'Off'
+    6      = 'Paused'
+    7      = 'Suspended'
+    4      = 'ShuttingDown'
+    10     = 'Starting'
+    11     = 'Snapshotting'
+    32773  = 'Saving'
+    32774  = 'Stopping'
+    9999   = 'NetworkReady'
+}
+
+function Get-StateName {
+    param (
+        [int] $State
+    )
+    return $script:VmStateMap[$State] ?? "Unknown($State)"
+}
+
+function Get-HyperVErrorMessage {
+    param(
+        [int]$Code
+    )
+
+    $errorMap = @{
+        0       = 'Completed successfully'
+        4096    = 'Job started'
+        32768   = 'Failed'
+        32769   = 'Access denied'
+        32770   = 'Not supported'
+        32771   = 'Status unknown'
+        32772   = 'Timeout'
+        32773   = 'Invalid parameter'
+        32774   = 'System is in use'
+        32775   = 'Invalid state'
+        32776   = 'Incorrect data type'
+        32777   = 'System not available'
+        32778   = 'Out of memory'
+    }
+
+    if ($errorMap.ContainsKey($Code)) {
+        return $errorMap[$Code]
+    } else {
+        return "Unknown Hyper-V error code: $Code"
+    }
+}
+
+function Start-VMInstance {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    } else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Send-VmLifecycleEvent -Action 'start' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
+}
+
+function Stop-VMInstance {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    } else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Send-VmLifecycleEvent -Action 'stop' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
+}
+
+function Suspend-VMInstance {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    } else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Send-VmLifecycleEvent -Action 'pause' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Paused -DisplayName $DisplayName
+}
+
+function Resume-VMInstance {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    } else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Send-VmLifecycleEvent -Action 'resume' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
+}
+
+function Stop-VMInstanceGracefully {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    } else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Send-VmLifecycleEvent -Action 'shutdown' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
+}
+
+function Send-VmLifecycleEvent {
+    param (
+        [Parameter(Mandatory)] [string] $Action,
+        [Parameter(Mandatory)] [string] $InstanceId,
+        [string] $DisplayName = 'VM'
+    )
+
+    Write-Verbose "[INFO] Sending $Action for $DisplayName id: $InstanceId"
+
+    $parameters = @{
+        action = $Action
+        id     = $InstanceId
+    }
+
+    $script:LifecycleError = $null
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:LifecycleError = $Response.data
+        }
+        else {
+            Write-Host "[⚙ ] Working on $DisplayName $Action …" -ForegroundColor Yellow
+        }
+
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:LifecycleError) {
+        # Try to parse an error code and make it friendly
+        if ($script:LifecycleError -match 'Error code: (\d+)') {
+            $code = [int]$matches[1]
+            $reason = Get-HyperVErrorMessage -Code $code
+            throw "[❌] Service Error: $reason ($code)"
+        } else {
+            throw "[❌] Service Error: $script:LifecycleError"
+        }
+    }
+}
+
+function Wait-VMInstanceState {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $InstanceName,
+
+        [Parameter(Mandatory)]
+        [int] $DesiredState,
+
+        [string] $DisplayName = 'VM',
+
+        [int] $TimeoutSeconds = 120,
+
+        [int] $PollIntervalSeconds = 3
+    )
+
+    # resolve to GUID if needed
+    if ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $InstanceName = Resolve-VMInstanceId -InstanceName $InstanceName
+    }
+
+    $startTime = Get-Date
+
+    Write-Verbose "[INFO] Waiting for $DisplayName '$InstanceName' to reach state $DesiredState…"
+
+    do {
+        $script:StateResult = $null
+        $script:StateError  = $null
+
+        $parameters = @{
+            action = 'state-check'
+            id     = $InstanceName
+            state  = $DesiredState
+        }
+
+        Send-Event -Command 'vm' -Parameters $parameters -Handler {
+            param ($Response)
+
+            if ($Response.status -ne 'ok') {
+                $script:StateError = $Response.data
+            } else {
+                $script:StateResult = $Response.data
+            }
+
+            Complete-Request -Id $Response.id
+        } | Out-Null
+
+        if ($script:StateError) {
+            throw "[❌] Service error during state-check: $script:StateError"
+        }
+
+        if ($script:StateResult -and $script:StateResult.matches) {
+            $stateName = Get-StateName -State $DesiredState
+            Write-Host "[✅] $DisplayName reached desired state: $stateName ($DesiredState)" -ForegroundColor Green
+            return
+        }
+
+        $currentStateName = Get-StateName -State $script:StateResult.currentState
+        Write-Host "[⏳] $DisplayName is in state $currentStateName ($($script:StateResult.currentState)), waiting…" -ForegroundColor Yellow
+
+        Start-Sleep -Seconds $PollIntervalSeconds
+
+    } while ((Get-Date) -lt $startTime.AddSeconds($TimeoutSeconds))
+
+    throw "[⏰] Timeout: $DisplayName did not reach desired state $DesiredState within $TimeoutSeconds seconds."
+}
+
 function Publish-VmArtifact {
     <#
 .SYNOPSIS
@@ -47,7 +336,7 @@ The path to the created artifact directory.
 
         $mergeAvhdx = Invoke-MergeAvhdxPrompt
 
-        Write-Host "[INFO] MERGE_AVHDX decision: $mergeAvhdx" -ForegroundColor Cyan
+        Write-Verbose "[INFO] MERGE_AVHDX decision: $mergeAvhdx"
     }
 
     # capture VM switch
@@ -155,7 +444,7 @@ Invoke-ProvisionVm -InstanceName my-instance
         throw "[❌] metadata.yml not found at: $metadataFile"
     }
 
-    Write-Host "[INFO] Loading metadata from: $metadataFile" -ForegroundColor Cyan
+    Write-Verbose "[INFO] Loading metadata from: $metadataFile"
 
     # Read and parse YAML
     $yaml = Get-Content -Raw -Path $metadataFile
@@ -184,9 +473,9 @@ Invoke-ProvisionVm -InstanceName my-instance
         throw "[❌] Metadata is missing required keys: base_vm and/or vm_switch."
     }
 
-    Write-Host "[INFO] Base VM: $baseVmGuid" -ForegroundColor Cyan
-    Write-Host "[INFO] VM Switch: $vmSwitchGuid" -ForegroundColor Cyan
-    Write-Host "[INFO] Merge Differencing Disk: $mergeDifferencingDisk" -ForegroundColor Cyan
+    Write-Verbose "[INFO] Base VM: $baseVmGuid"
+    Write-Verbose "[INFO] VM Switch: $vmSwitchGuid"
+    Write-Verbose "[INFO] Merge Differencing Disk: $mergeDifferencingDisk"
 
     # Build parameters for service
     $parameters = @{
@@ -212,7 +501,7 @@ Invoke-ProvisionVm -InstanceName my-instance
         }
 
         Complete-Request -Id $Response.id
-    }
+    } | Out-Null
 
     if ($null -ne $script:ProvisionVmError) {
         throw "[❌] Service Error: $script:ProvisionVmError"
@@ -266,10 +555,10 @@ Publish-SeedIso -InstanceName test5
         $script:isoPath = $Response.data.isoPath
 
         Complete-Request -Id $Response.id
-    }
+    } | Out-Null
 
-    if ($null -eq $response) {
-        throw "[ERROR] No response received from service."
+    if ($null -eq $script:isoPath) {
+        throw "[ERROR] ISO path was not set by handler."
     }
 
     return $isoPath
@@ -291,7 +580,7 @@ function Copy-Vhdx {
     $script:CopyVhdxResult = $null
     $script:CopyVhdxError = $null
 
-    Write-Host "[INFO] Requesting VHDX clone for VM '$VmGuid' as '$Name' from service..."
+    Write-Verbose "[INFO] Requesting VHDX clone for VM '$VmGuid' as '$Name' from service..."
 
     $parameters = @{
         action        = 'clone'
@@ -301,7 +590,7 @@ function Copy-Vhdx {
 
     if ($MergeAvhdx) {
         $parameters['merge_avhdx'] = $true
-        Write-Host "[INFO] merge_avhdx: true (will merge differencing disk if applicable)"
+        Write-Verbose "[INFO] merge_avhdx: true (will merge differencing disk if applicable)"
     }
 
     Send-Event -Command 'vhdx' -Parameters $parameters -Handler {
@@ -315,7 +604,7 @@ function Copy-Vhdx {
         }
 
         Complete-Request -Id $Response.id
-    }
+    } | Out-Null
 
     if ($null -ne $script:CopyVhdxError) {
         throw "[❌] Service Error: $script:CopyVhdxError"
@@ -362,6 +651,50 @@ function Get-IsDifferencingDisk {
     return $script:IsDiffDiskResult
 }
 
+function Resolve-VMInstanceId {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$InstanceName
+    )
+
+    $script:VmResult = $null
+    $script:VmError  = $null
+
+    $parameters = @{
+        action       = 'list'
+        provisioned  = 'only'
+    }
+
+    $result = Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:VmError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:VmResult = $Response.data.vms
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:VmError) {
+        throw "Service error: $script:VmError"
+    }
+
+    if (-not $script:VmResult -or $script:VmResult.Count -eq 0) {
+        throw "No VMs returned from service."
+    }
+
+    $vm = $script:VmResult | Where-Object { $_.Name -eq $InstanceName }
+
+    if (-not $vm) {
+        throw "Instance name '$InstanceName' could not be resolved to a GUID."
+    }
+
+    return $vm.Id
+}
 
 function ConvertTo-Boolean {
     [CmdletBinding()]
@@ -404,9 +737,15 @@ function ConvertTo-Boolean {
 }
 
 Export-ModuleMember -Function `
+    Start-VMInstance, `
+    Stop-VMInstance, `
+    Suspend-VMInstance, `
+    Resume-VMInstance, `
+    Stop-VMInstanceGracefully, `
     Invoke-ProvisionVm, `
     Publish-VmArtifact, `
     Publish-SeedIso, `
     Copy-Vhdx, `
     Get-IsDifferencingDisk, `
-    ConvertTo-Boolean
+    ConvertTo-Boolean, `
+    Wait-VMInstanceState

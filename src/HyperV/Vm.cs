@@ -1,8 +1,9 @@
 using System;
 using System.Linq;
 
-using Microsoft.Extensions.Logging;
 using Microsoft.Management.Infrastructure;
+
+using VmGenie.Artifacts;
 
 namespace VmGenie.HyperV;
 
@@ -16,7 +17,8 @@ public class Vm(
     ulong? uptimeSeconds,
     DateTime? creationTime,
     string? hostResourcePath,
-    string? generation
+    string? generation,
+    Instance? artifactInstance = null
 )
 {
     private const string Namespace = @"root\virtualization\v2";
@@ -31,6 +33,7 @@ public class Vm(
     public DateTime? CreationTime { get; } = creationTime;
     public string? HostResourcePath { get; } = hostResourcePath;
     public string? Generation { get; } = generation;
+    public Instance? ArtifactInstance { get; } = artifactInstance;
 
     public override string ToString() =>
         $"{Name} [{Id}] - State: {State}, CPUs: {CpuCount}, Memory: {MemoryMb} MB, Uptime: {UptimeSeconds}s";
@@ -38,7 +41,8 @@ public class Vm(
     public static Vm FromCimInstance(
         CimSession session,
         CimInstance system,
-        bool includeHostResourcePath = true
+        bool includeHostResourcePath = true,
+        Instance? artifactInstance = null
     )
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -70,7 +74,7 @@ public class Vm(
                 ?? throw new InvalidOperationException($"Could not resolve VHDX path for VM '{name}' ({id}).");
         }
 
-        return new Vm(id, name, state, description, cpuCount, memoryMb, uptimeSeconds, creationTime, hostResourcePath, generation);
+        return new Vm(id, name, state, description, cpuCount, memoryMb, uptimeSeconds, creationTime, hostResourcePath, generation, artifactInstance);
     }
 
     /// <summary>

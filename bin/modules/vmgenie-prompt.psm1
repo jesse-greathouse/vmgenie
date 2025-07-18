@@ -371,7 +371,16 @@ function Invoke-VmPrompt {
     $vmMap = @{}
 
     foreach ($vm in $script:VmResult) {
-        $displayName = $vm.Name
+        if ($null -ne $vm.ArtifactInstance) {
+            $displayName = "{0} ( {1} {2} )" -f `
+                $vm.Name, `
+                $vm.ArtifactInstance.OperatingSystem, `
+                $vm.ArtifactInstance.Version
+        }
+        else {
+            $displayName = $vm.Name
+        }
+
         $vmMap[$displayName] = $vm
     }
 
