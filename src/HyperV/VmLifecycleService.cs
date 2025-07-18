@@ -11,6 +11,7 @@ public class VmLifecycleService(VmHelper vmHelper, ILogger<VmLifecycleService> l
     private readonly VmHelper _vmHelper = vmHelper ?? throw new ArgumentNullException(nameof(vmHelper));
     private readonly ILogger<VmLifecycleService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     public const int NetworkReadyState = 9999;
+
     public static bool IsRunning(string vmGuid) =>
         GetCurrentState(vmGuid) == VmState.Running;
 
@@ -145,9 +146,9 @@ if ($ip) {{ exit 0 }} else {{ exit 2 }}
             .FirstOrDefault() ?? throw new InvalidOperationException($"VM with GUID {vmGuid} not found.");
 
         var inParams = new CimMethodParametersCollection
-    {
-        CimMethodParameter.Create("RequestedState", (ushort)requestedState, CimType.UInt16, CimFlags.None)
-    };
+        {
+            CimMethodParameter.Create("RequestedState", (ushort)requestedState, CimType.UInt16, CimFlags.None)
+        };
 
         var result = session.InvokeMethod(vm, "RequestStateChange", inParams);
 
@@ -171,26 +172,5 @@ if ($ip) {{ exit 0 }} else {{ exit 2 }}
         }
 
         throw new InvalidOperationException("Failed to get return code from RequestStateChange.");
-    }
-
-    private static bool TryGetAssignedIp(string vmGuid, CimSession session, out string? ipAddress)
-    {
-        ipAddress = null;
-
-        var ns = @"root\virtualization\v2";
-        var query = session.QueryInstances(ns, "WQL",
-            $"SELECT * FROM Msvm_GuestNetworkAdapterConfiguration WHERE SystemName='{vmGuid}'");
-
-        foreach (var nic in query)
-        {
-            if (nic.CimInstanceProperties["IPAddress"]?.Value is string[] ips && ips.Length > 0)
-            {
-                ipAddress = ips.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i) && !i.StartsWith("169."));
-                if (!string.IsNullOrEmpty(ipAddress))
-                    return true;
-            }
-        }
-
-        return false;
     }
 }
