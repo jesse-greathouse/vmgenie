@@ -361,6 +361,122 @@ function Get-VMNetAddress {
     return $script:NetAddressResult
 }
 
+function Connect-VMInstance {
+    <#
+.SYNOPSIS
+Starts a VM if needed, waits for network readiness, then connects via SSH.
+#>
+    [CmdletBinding()]
+    param(
+        [string]$InstanceName
+    )
+
+    if (-not $InstanceName) {
+        Write-Verbose "[INFO] No instance name provided; prompting user to select …"
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $InstanceName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+    }
+    else {
+        $guid = $InstanceName
+    }
+
+    Write-Verbose "[INFO] Selected instance name: $InstanceName"
+
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+    $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$InstanceName"
+    $metadataFile = Join-Path -Path $artifactDir -ChildPath "metadata.yml" 
+
+    if (-not (Test-Path $metadataFile)) {
+        throw "[❌] metadata.yml not found at: $metadataFile"
+    }
+
+    $yaml = Get-Content -Raw -Path $metadataFile
+    $deserializer = [YamlDotNet.Serialization.DeserializerBuilder]::new().Build()
+    $reader = New-Object System.IO.StringReader($yaml)
+    $metadata = $deserializer.Deserialize(
+        $reader,
+        [System.Collections.Generic.Dictionary[string, object]]
+    )
+
+    if (-not $metadata) { throw "[❌] Failed to deserialize metadata.yml." }
+
+    $username = $metadata['username']
+    if (-not $username) { throw "[❌] No 'username' in metadata.yml." }
+
+    $pemPath = Join-Path -Path $artifactDir -ChildPath "$InstanceName.pem"
+    if (-not (Test-Path $pemPath)) {
+        throw "[❌] Private key not found: $pemPath"
+    }
+
+    # Step 1 — check VM state
+    Write-Verbose "[INFO] Checking VM state…"
+    $script:StateResult = $null
+    $script:StateError = $null
+
+    $parameters = @{
+        action = 'state-check'
+        id     = $guid
+        state  = $script:VmState_Running
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:StateError = $Response.data
+        }
+        else {
+            $script:StateResult = $Response.data
+        }
+
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:StateError) {
+        throw "[❌] Service error during state-check: $script:StateError"
+    }
+
+    $currentState = $script:StateResult.currentState
+
+    if ($null -eq $currentState) {
+        throw "[❌] Could not determine current VM state for '$InstanceName'."
+    }
+
+    $desiredRunningState = $script:VmState_Running
+    $currentStateName = $script:VmStateMap[[int]$currentState] ?? "Unknown"
+
+    if ($currentState -ne $desiredRunningState) {
+        Write-Host "[🟢] VM is not running (state: $currentStateName). Starting it…" -ForegroundColor Yellow
+        Start-VMInstance -InstanceName $guid
+        Wait-VMInstanceState -InstanceName $guid -DesiredState $desiredRunningState -DisplayName $InstanceName
+    }
+    else {
+        Write-Host "[✅] VM is already running (state: $currentStateName)." -ForegroundColor Green
+    }
+
+    # Step 2 — wait for network readiness
+    $networkReadyState = $script:VmState_NetworkReady
+    Write-Host "[🌐] Waiting for VM network readiness…" -ForegroundColor Yellow
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $networkReadyState -DisplayName $InstanceName
+
+    # Step 3 — get IP and SSH
+    $addresses = Get-VMNetAddress -InstanceName $guid
+    $ipv4 = $addresses.IPv4[0]
+
+    if (-not $ipv4) {
+        throw "[❌] No IPv4 address found for instance '$InstanceName'."
+    }
+
+    Write-Host "[➡ ] Connecting to $InstanceName at $ipv4 as $username …" -ForegroundColor Cyan
+
+    & ssh -i $pemPath -o IdentitiesOnly=yes "$username@$ipv4"
+}
+
 function Publish-VmArtifact {
     <#
 .SYNOPSIS
@@ -503,7 +619,9 @@ Invoke-ProvisionVm -InstanceName my-instance
         [string] $InstanceName
     )
 
-    $artifactDir = Join-Path -Path "var/cloud" -ChildPath $InstanceName
+    # Locate metadata.yml
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+    $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$InstanceName"
     $metadataFile = Join-Path -Path $artifactDir -ChildPath "metadata.yml"
 
     if (-not (Test-Path $metadataFile)) {
@@ -808,6 +926,7 @@ Export-ModuleMember -Function `
     Suspend-VMInstance, `
     Resume-VMInstance, `
     Stop-VMInstanceGracefully, `
+    Connect-VMInstance, `
     Invoke-ProvisionVm, `
     Publish-VmArtifact, `
     Publish-SeedIso, `

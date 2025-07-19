@@ -59,6 +59,7 @@ public class InstanceRepository
                     metadata.Version,
                     metadata.BaseVm,
                     metadata.VmSwitch,
+                    metadata.Username,
                     metadata.MergeAvhdx,
                     instanceDir
                 ));
@@ -96,6 +97,7 @@ public class InstanceRepository
         public string Version { get; set; } = "";
         public string BaseVm { get; set; } = "";
         public string VmSwitch { get; set; } = "";
+        public string Username { get; set; } = "";
         public bool MergeAvhdx { get; set; }
     }
 }

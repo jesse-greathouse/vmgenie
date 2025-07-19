@@ -8,6 +8,7 @@ public class Instance(
     string version,
     string baseVm,
     string vmSwitch,
+    string username,
     bool mergeAvhdx,
     string path)
 {
@@ -16,6 +17,7 @@ public class Instance(
     public string Version { get; } = version;
     public string BaseVm { get; } = baseVm;
     public string VmSwitch { get; } = vmSwitch;
+    public string Username { get; } = username;
     public bool MergeAvhdx { get; } = mergeAvhdx;
     public string Path { get; } = path; // path to instance folder
 }
