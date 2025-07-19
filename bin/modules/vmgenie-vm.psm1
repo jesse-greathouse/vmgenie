@@ -7,28 +7,28 @@ Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 Import-YamlDotNet
 
 # Define script-scoped VM state constants
-$script:VmState_Running       = 2
-$script:VmState_Off           = 3
-$script:VmState_Paused        = 6
-$script:VmState_Suspended     = 7
-$script:VmState_ShuttingDown  = 4
-$script:VmState_Starting      = 10
-$script:VmState_Snapshotting  = 11
-$script:VmState_Saving        = 32773
-$script:VmState_Stopping      = 32774
-$script:VmState_NetworkReady  = 9999
+$script:VmState_Running = 2
+$script:VmState_Off = 3
+$script:VmState_Paused = 6
+$script:VmState_Suspended = 7
+$script:VmState_ShuttingDown = 4
+$script:VmState_Starting = 10
+$script:VmState_Snapshotting = 11
+$script:VmState_Saving = 32773
+$script:VmState_Stopping = 32774
+$script:VmState_NetworkReady = 9999
 
 $script:VmStateMap = @{
-    2      = 'Running'
-    3      = 'Off'
-    6      = 'Paused'
-    7      = 'Suspended'
-    4      = 'ShuttingDown'
-    10     = 'Starting'
-    11     = 'Snapshotting'
-    32773  = 'Saving'
-    32774  = 'Stopping'
-    9999   = 'NetworkReady'
+    2     = 'Running'
+    3     = 'Off'
+    6     = 'Paused'
+    7     = 'Suspended'
+    4     = 'ShuttingDown'
+    10    = 'Starting'
+    11    = 'Snapshotting'
+    32773 = 'Saving'
+    32774 = 'Stopping'
+    9999  = 'NetworkReady'
 }
 
 function Get-StateName {
@@ -44,24 +44,25 @@ function Get-HyperVErrorMessage {
     )
 
     $errorMap = @{
-        0       = 'Completed successfully'
-        4096    = 'Job started'
-        32768   = 'Failed'
-        32769   = 'Access denied'
-        32770   = 'Not supported'
-        32771   = 'Status unknown'
-        32772   = 'Timeout'
-        32773   = 'Invalid parameter'
-        32774   = 'System is in use'
-        32775   = 'Invalid state'
-        32776   = 'Incorrect data type'
-        32777   = 'System not available'
-        32778   = 'Out of memory'
+        0     = 'Completed successfully'
+        4096  = 'Job started'
+        32768 = 'Failed'
+        32769 = 'Access denied'
+        32770 = 'Not supported'
+        32771 = 'Status unknown'
+        32772 = 'Timeout'
+        32773 = 'Invalid parameter'
+        32774 = 'System is in use'
+        32775 = 'Invalid state'
+        32776 = 'Incorrect data type'
+        32777 = 'System not available'
+        32778 = 'Out of memory'
     }
 
     if ($errorMap.ContainsKey($Code)) {
         return $errorMap[$Code]
-    } else {
+    }
+    else {
         return "Unknown Hyper-V error code: $Code"
     }
 }
@@ -81,7 +82,8 @@ function Start-VMInstance {
         Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
         $guid = Resolve-VMInstanceId -InstanceName $InstanceName
         $DisplayName = $InstanceName
-    } else {
+    }
+    else {
         $guid = $InstanceName
         $DisplayName = $InstanceName
     }
@@ -105,7 +107,8 @@ function Stop-VMInstance {
         Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
         $guid = Resolve-VMInstanceId -InstanceName $InstanceName
         $DisplayName = $InstanceName
-    } else {
+    }
+    else {
         $guid = $InstanceName
         $DisplayName = $InstanceName
     }
@@ -129,7 +132,8 @@ function Suspend-VMInstance {
         Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
         $guid = Resolve-VMInstanceId -InstanceName $InstanceName
         $DisplayName = $InstanceName
-    } else {
+    }
+    else {
         $guid = $InstanceName
         $DisplayName = $InstanceName
     }
@@ -153,7 +157,8 @@ function Resume-VMInstance {
         Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
         $guid = Resolve-VMInstanceId -InstanceName $InstanceName
         $DisplayName = $InstanceName
-    } else {
+    }
+    else {
         $guid = $InstanceName
         $DisplayName = $InstanceName
     }
@@ -177,7 +182,8 @@ function Stop-VMInstanceGracefully {
         Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
         $guid = Resolve-VMInstanceId -InstanceName $InstanceName
         $DisplayName = $InstanceName
-    } else {
+    }
+    else {
         $guid = $InstanceName
         $DisplayName = $InstanceName
     }
@@ -221,7 +227,8 @@ function Send-VmLifecycleEvent {
             $code = [int]$matches[1]
             $reason = Get-HyperVErrorMessage -Code $code
             throw "[❌] Service Error: $reason ($code)"
-        } else {
+        }
+        else {
             throw "[❌] Service Error: $script:LifecycleError"
         }
     }
@@ -255,7 +262,7 @@ function Wait-VMInstanceState {
 
     do {
         $script:StateResult = $null
-        $script:StateError  = $null
+        $script:StateError = $null
 
         $parameters = @{
             action = 'state-check'
@@ -268,7 +275,8 @@ function Wait-VMInstanceState {
 
             if ($Response.status -ne 'ok') {
                 $script:StateError = $Response.data
-            } else {
+            }
+            else {
                 $script:StateResult = $Response.data
             }
 
@@ -293,6 +301,64 @@ function Wait-VMInstanceState {
     } while ((Get-Date) -lt $startTime.AddSeconds($TimeoutSeconds))
 
     throw "[⏰] Timeout: $DisplayName did not reach desired state $DesiredState within $TimeoutSeconds seconds."
+}
+
+function Get-VMNetAddress {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    # Resolve VM GUID + Display Name
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned only
+        $guid = $vm.Id
+        $DisplayName = $vm.Name
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        $DisplayName = $InstanceName
+    }
+    else {
+        $guid = $InstanceName
+        $DisplayName = $InstanceName
+    }
+
+    Write-Verbose "[INFO] Fetching network addresses for VM '$DisplayName' [$guid]…"
+
+    $script:NetAddressResult = $null
+    $script:NetAddressError = $null
+
+    $parameters = @{
+        action = 'net-address'
+        id     = $guid
+    }
+
+    Write-Host "[⚙ ] Retrieving net address for VM: $DisplayName" -ForegroundColor Yellow
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:NetAddressError = $Response.data
+        }
+        else {
+            $script:NetAddressResult = $Response.data.addresses
+        }
+
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:NetAddressError) {
+        throw "[❌] Service error during net-address query: $script:NetAddressError"
+    }
+
+    if ($null -eq $script:NetAddressResult) {
+        throw "[ERROR] No response or addresses were returned."
+    }
+
+    return $script:NetAddressResult
 }
 
 function Publish-VmArtifact {
@@ -659,14 +725,14 @@ function Resolve-VMInstanceId {
     )
 
     $script:VmResult = $null
-    $script:VmError  = $null
+    $script:VmError = $null
 
     $parameters = @{
-        action       = 'list'
-        provisioned  = 'only'
+        action      = 'list'
+        provisioned = 'only'
     }
 
-    $result = Send-Event -Command 'vm' -Parameters $parameters -Handler {
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
         param ($Response)
 
         if ($Response.status -ne 'ok') {
@@ -748,4 +814,5 @@ Export-ModuleMember -Function `
     Copy-Vhdx, `
     Get-IsDifferencingDisk, `
     ConvertTo-Boolean, `
-    Wait-VMInstanceState
+    Wait-VMInstanceState, `
+    Get-VMNetAddress

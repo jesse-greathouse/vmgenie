@@ -11,9 +11,10 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vm" command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class VmHandler(VmRepository repository, VmProvisioningService provisioner, VmLifecycleService lifecycle) : IEventHandler
+public class VmHandler(VmRepository repository, VmNetAddressRepository netAddressRepository, VmProvisioningService provisioner, VmLifecycleService lifecycle) : IEventHandler
 {
     private readonly VmRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly VmNetAddressRepository _netAddressRepository = netAddressRepository ?? throw new ArgumentNullException(nameof(netAddressRepository));
     private readonly VmProvisioningService _provisioner = provisioner ?? throw new ArgumentNullException(nameof(provisioner));
     private readonly VmLifecycleService _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
@@ -68,6 +69,10 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
 
             case "state-check":
                 data = HandleStateCheck(evt, _lifecycle);
+                break;
+
+            case "net-address":
+                data = HandleNetAddress(evt);
                 break;
 
             default:
@@ -311,6 +316,30 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
         return new { vm };
     }
 
+    private object? HandleNetAddress(Event evt)
+    {
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement elem ||
+            elem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'id' parameter for net-address action.");
+        }
+
+        var vmId = elem.GetString();
+        if (string.IsNullOrWhiteSpace(vmId))
+        {
+            throw new ArgumentException("'id' parameter cannot be empty.");
+        }
+
+        var result = _netAddressRepository.GetNetAddressesForVmById(vmId);
+
+        return new
+        {
+            id = vmId,
+            addresses = result
+        };
+    }
+
     private static string? GetStringParam(object? obj)
     {
         return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
@@ -344,6 +373,10 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
                     ["action"] = "state-check",
                     ["description"] = "Checks if a VM is currently in a specific state by id and state value."
                 },
+                new Dictionary<string, string> {
+                    ["action"] = "net-address",
+                    ["description"] = "Returns categorized network addresses for the specified VM id."
+                },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
@@ -360,6 +393,10 @@ public class VmHandler(VmRepository repository, VmProvisioningService provisione
                 new Dictionary<string, object> {
                     ["action"] = "state-check",
                     ["parameters"] = new { action = "state-check", id = "SOME-VM-ID", state = 2 }
+                },
+                new Dictionary<string, object> {
+                    ["action"] = "net-address",
+                    ["parameters"] = new { action = "net-address", id = "SOME-VM-ID" }
                 }
             }
         };

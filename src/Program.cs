@@ -37,6 +37,7 @@ public class Program
                 services.AddSingleton<VmHelper>();
                 services.AddSingleton<VmRepository>();
                 services.AddSingleton<VmSwitchRepository>();
+                services.AddSingleton<VmNetAddressRepository>();
                 services.AddSingleton<VmLifecycleService>();
                 services.AddSingleton<VmProvisioningService>();
                 services.AddSingleton<VhdxManager>();

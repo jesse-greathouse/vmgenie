@@ -17,6 +17,7 @@ public static class EventHandlerEngineBuilder
         var osRepo = services.GetRequiredService<OperatingSystemTemplateRepository>();
         var vmRepo = services.GetRequiredService<VmRepository>();
         var vmSwitchRepo = services.GetRequiredService<VmSwitchRepository>();
+        var vmNetAddressRepo = services.GetRequiredService<VmNetAddressRepository>();
         var vmProvisioner = services.GetRequiredService<VmProvisioningService>();
         var vmLifecycle = services.GetRequiredService<VmLifecycleService>();
         var vhdxManager = services.GetRequiredService<VhdxManager>();
@@ -27,7 +28,7 @@ public static class EventHandlerEngineBuilder
         engine.Register("status", new StatusHandler());
         engine.Register("operating-system", new OperatingSystemHandler(osRepo));
         engine.Register("os-version", new OsVersionHandler(osRepo));
-        engine.Register("vm", new VmHandler(vmRepo, vmProvisioner, vmLifecycle));
+        engine.Register("vm", new VmHandler(vmRepo, vmNetAddressRepo, vmProvisioner, vmLifecycle));
         engine.Register("vm-switch", new VmSwitchHandler(vmSwitchRepo));
         engine.Register("artifact", new ArtifactHandler(config));
         engine.Register("vhdx", new VhdxHandler(vhdxManager));
