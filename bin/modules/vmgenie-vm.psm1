@@ -73,20 +73,9 @@ function Start-VMInstance {
         [string] $InstanceName
     )
 
-    if (-not $InstanceName) {
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $DisplayName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-        $DisplayName = $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-        $DisplayName = $InstanceName
-    }
+    $selection = Resolve-VMInstanceSelectionOrNew -InstanceName $InstanceName
+    $guid = $selection.Guid
+    $DisplayName = $selection.DisplayName
 
     Send-VmLifecycleEvent -Action 'start' -InstanceId $guid -DisplayName $DisplayName
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
@@ -98,20 +87,9 @@ function Stop-VMInstance {
         [string] $InstanceName
     )
 
-    if (-not $InstanceName) {
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $DisplayName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-        $DisplayName = $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-        $DisplayName = $InstanceName
-    }
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
 
     Send-VmLifecycleEvent -Action 'stop' -InstanceId $guid -DisplayName $DisplayName
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
@@ -123,20 +101,9 @@ function Suspend-VMInstance {
         [string] $InstanceName
     )
 
-    if (-not $InstanceName) {
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $DisplayName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-        $DisplayName = $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-        $DisplayName = $InstanceName
-    }
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
 
     Send-VmLifecycleEvent -Action 'pause' -InstanceId $guid -DisplayName $DisplayName
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Paused -DisplayName $DisplayName
@@ -148,20 +115,9 @@ function Resume-VMInstance {
         [string] $InstanceName
     )
 
-    if (-not $InstanceName) {
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $DisplayName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-        $DisplayName = $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-        $DisplayName = $InstanceName
-    }
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
 
     Send-VmLifecycleEvent -Action 'resume' -InstanceId $guid -DisplayName $DisplayName
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
@@ -173,20 +129,9 @@ function Stop-VMInstanceGracefully {
         [string] $InstanceName
     )
 
-    if (-not $InstanceName) {
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $DisplayName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-        $DisplayName = $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-        $DisplayName = $InstanceName
-    }
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
 
     Send-VmLifecycleEvent -Action 'shutdown' -InstanceId $guid -DisplayName $DisplayName
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
@@ -363,27 +308,18 @@ function Get-VMNetAddress {
 
 function Connect-VMInstance {
     <#
-.SYNOPSIS
-Starts a VM if needed, waits for network readiness, then connects via SSH.
-#>
+    .SYNOPSIS
+    Starts a VM if needed, waits for network readiness, then connects via SSH.
+    #>
     [CmdletBinding()]
     param(
         [string]$InstanceName
     )
 
-    if (-not $InstanceName) {
-        Write-Verbose "[INFO] No instance name provided; prompting user to select …"
-        $vm = Invoke-VmPrompt -Provisioned only
-        $guid = $vm.Id
-        $InstanceName = $vm.Name
-    }
-    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
-        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
-        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
-    }
-    else {
-        $guid = $InstanceName
-    }
+    # Use the new helper: may prompt/create as needed, always returns a valid VM
+    $selection = Resolve-VMInstanceSelectionOrNew -InstanceName $InstanceName
+    $guid = $selection.Guid
+    $InstanceName = $selection.DisplayName
 
     Write-Verbose "[INFO] Selected instance name: $InstanceName"
 
@@ -426,14 +362,12 @@ Starts a VM if needed, waits for network readiness, then connects via SSH.
 
     Send-Event -Command 'vm' -Parameters $parameters -Handler {
         param ($Response)
-
         if ($Response.status -ne 'ok') {
             $script:StateError = $Response.data
         }
         else {
             $script:StateResult = $Response.data
         }
-
         Complete-Request -Id $Response.id
     } | Out-Null
 
@@ -478,18 +412,20 @@ Starts a VM if needed, waits for network readiness, then connects via SSH.
 
 function Publish-VmArtifact {
     <#
-.SYNOPSIS
-Guided wizard to produce a VM artifact product directory under var/cloud/<INSTANCE>.
-
-.DESCRIPTION
-Prompts the user for all necessary values, generates an SSH keypair, renders templates,
-and writes files into var/cloud/<INSTANCE> following the standard structure.
-
-.OUTPUTS
-The path to the created artifact directory.
-#>
+    .SYNOPSIS
+    Guided wizard to produce a VM artifact product directory under var/cloud/<INSTANCE>.
+    .DESCRIPTION
+    Prompts the user for all necessary values, generates an SSH keypair, renders templates,
+    and writes files into var/cloud/<INSTANCE> following the standard structure.
+    .PARAMETER InstanceName
+    Optional instance name to use. If not provided, the user will be prompted.
+    .OUTPUTS
+    The path to the created artifact directory.
+    #>
     [CmdletBinding()]
-    param ()
+    param (
+        [string] $InstanceName
+    )
 
     # Bring in global application configuration to use for some default values
     $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
@@ -498,8 +434,20 @@ The path to the created artifact directory.
 
     Write-Host "=== VmGenie Artifact Wizard ===" -ForegroundColor Cyan
 
-    # Prompt for all values
-    $instance = Invoke-InstancePrompt
+    # Instance name: prompt only if not provided
+    if ($InstanceName) {
+        $instance = $InstanceName
+        Write-Host "✔ Instance Name: $instance"
+    }
+    else {
+        $instance = Invoke-InstancePrompt
+    }
+
+    # Check for existing artifact
+    if (Test-IsPublished -InstanceName $instance) {
+        throw "[FATAL] Instance '$instance' is already published (artifact exists in var/cloud/$instance)."
+    }
+
     $os = Invoke-OperatingSystemPrompt
     $osVersion = Invoke-OsVersionPrompt -OperatingSystem $os
 
@@ -598,25 +546,36 @@ The path to the created artifact directory.
 
 function Invoke-ProvisionVm {
     <#
-.SYNOPSIS
-Provisions a VM based on the artifacts and metadata in var/cloud/<InstanceName>.
+    .SYNOPSIS
+    Provisions a VM based on the artifacts and metadata in var/cloud/<InstanceName>.
 
-.DESCRIPTION
-Loads the metadata.yml for the given InstanceName, reads required parameters
-(base_vm, vm_switch, merge_avhdx) and sends a `vm` command with `action=provision`
-to the VmGenie service. Returns the provisioned VM DTO.
+    .DESCRIPTION
+    Loads the metadata.yml for the given InstanceName, reads required parameters
+    (base_vm, vm_switch, merge_avhdx) and sends a `vm` command with `action=provision`
+    to the VmGenie service. Returns the provisioned VM DTO.
 
-.PARAMETER InstanceName
-The name of the instance (artifact directory) to provision.
+    .PARAMETER InstanceName
+    Optional instance name to use. If not provided, the user will be prompted.
 
-.EXAMPLE
-Invoke-ProvisionVm -InstanceName my-instance
-#>
+    .EXAMPLE
+    Invoke-ProvisionVm -InstanceName my-instance
+    #>
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
         [string] $InstanceName
     )
+
+    if (-not $InstanceName) {
+        $InstanceName = Invoke-InstancePrompt
+    }
+
+    if (Test-IsProvisioned -InstanceName $InstanceName) {
+        throw "[FATAL] Instance '$InstanceName' is already provisioned."
+    }
+
+    if (-not (Test-IsPublished -InstanceName $InstanceName)) {
+        Publish-VmArtifact -InstanceName $InstanceName
+    }
 
     # Locate metadata.yml
     $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
@@ -671,6 +630,8 @@ Invoke-ProvisionVm -InstanceName my-instance
 
     $script:ProvisionVmError = $null
     $script:ProvisionedVm = $null
+
+    Write-Host "[⚙ ] Working on Provisioning $InstanceName …" -ForegroundColor Yellow
 
     Send-Event -Command 'vm' -Parameters $parameters -Handler {
         param ($Response)
@@ -797,7 +758,6 @@ function Copy-Vhdx {
     return $script:CopyVhdxResult
 }
 
-
 function Get-IsDifferencingDisk {
     [CmdletBinding()]
     param (
@@ -832,6 +792,81 @@ function Get-IsDifferencingDisk {
     }
 
     return $script:IsDiffDiskResult
+}
+
+function Resolve-VMInstanceSelection {
+    param(
+        [string] $InstanceName,
+        [string] $Provisioned = 'only'
+    )
+
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned $Provisioned
+        return @{ Guid = $vm.Id; DisplayName = $vm.Name }
+    }
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        Write-Verbose "Resolving instance name '$InstanceName' to GUID…"
+        $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+        return @{ Guid = $guid; DisplayName = $InstanceName }
+    }
+    else {
+        return @{ Guid = $InstanceName; DisplayName = $InstanceName }
+    }
+}
+
+function Resolve-VMInstanceSelectionOrNew { 
+    param(
+        [string] $InstanceName,
+        [string] $Provisioned = 'only'
+    )
+
+    # Case 1: No InstanceName provided, interactive prompt (with "New" option)
+    if (-not $InstanceName) {
+        $vm = Invoke-VmPrompt -Provisioned $Provisioned -New
+        if ($vm -eq '__NEW__') {
+            # User chose to create a new VM
+            $InstanceName = Invoke-InstancePrompt  # prompt for name of new VM
+            $newVm = Invoke-ProvisionVm -InstanceName $InstanceName
+            return @{ Guid = $newVm.Id; DisplayName = $newVm.Name }
+        }
+        else {
+            # Existing VM selected
+            return @{ Guid = $vm.Id; DisplayName = $vm.Name }
+        }
+    }
+
+    # Case 2: InstanceName supplied, check if it exists (by name, not GUID)
+    elseif ($InstanceName -notmatch '^[0-9a-fA-F-]{36}$') {
+        $exists = $false
+        try {
+            $guid = Resolve-VMInstanceId -InstanceName $InstanceName
+            $exists = $true
+        }
+        catch {
+            $exists = $false
+        }
+
+        if ($exists) {
+            # VM exists, normal path
+            return @{ Guid = $guid; DisplayName = $InstanceName }
+        }
+        else {
+            # VM doesn't exist, prompt to create
+            if (Invoke-CreateVmConfirmPrompt -InstanceName $InstanceName) {
+                $newVm = Invoke-ProvisionVm -InstanceName $InstanceName
+                return @{ Guid = $newVm.Id; DisplayName = $newVm.Name }
+            }
+            else {
+                throw "[FATAL] Instance '$InstanceName' does not exist."
+            }
+        }
+    }
+
+    # Case 3: InstanceName is a GUID (already provisioned)
+    else {
+        # Optionally, you might want to resolve DisplayName from GUID here for full symmetry
+        return @{ Guid = $InstanceName; DisplayName = $InstanceName }
+    }
 }
 
 function Resolve-VMInstanceId {
@@ -877,6 +912,61 @@ function Resolve-VMInstanceId {
     }
 
     return $vm.Id
+}
+
+function Test-IsPublished {
+    param(
+        [Parameter(Mandatory)]
+        [string] $InstanceName
+    )
+
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+    $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$InstanceName"
+
+    return (Test-Path $artifactDir)
+}
+
+function Test-IsProvisioned {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $InstanceName
+    )
+
+    $script:VmResult = $null
+    $script:VmError = $null
+
+    $parameters = @{
+        action      = 'list'
+        provisioned = 'only'
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:VmError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+        $script:VmResult = $Response.data.vms
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:VmError) {
+        throw "Service error: $script:VmError"
+    }
+
+    if (-not $script:VmResult -or $script:VmResult.Count -eq 0) {
+        return $false
+    }
+
+    foreach ($vm in $script:VmResult) {
+        if ($vm.Name -eq $InstanceName) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function ConvertTo-Boolean {

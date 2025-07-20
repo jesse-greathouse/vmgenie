@@ -1,3 +1,4 @@
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 Import-Module "$PSScriptRoot\vmgenie-import.psm1"
 Import-Sharprompt
@@ -327,7 +328,9 @@ function Invoke-VmPrompt {
         [string] $Version,
 
         [ValidateSet('all', 'exclude', 'only')]
-        [string] $Provisioned = 'all'
+        [string] $Provisioned = 'all',
+
+        [switch] $New
     )
 
     $script:VmResult = $null
@@ -345,7 +348,6 @@ function Invoke-VmPrompt {
         param ($Response)
 
         if ($Response.status -ne 'ok') {
-            # Use the raw data string for the error message
             $script:VmError = $Response.data
             Complete-Request -Id $Response.id
             return
@@ -388,7 +390,19 @@ function Invoke-VmPrompt {
     $options = New-Object Sharprompt.SelectOptions[string]
     $options.Message = $label
     $options.Items = [System.Collections.Generic.List[string]]::new()
-    $vmMap.Keys | ForEach-Object { $options.Items.Add($_) }
+
+    # If -New is passed, add "Create New VM"
+    if ($New) {
+        $newLabel = "🆕 Create New VM"
+        $vmMap[$newLabel] = '__NEW__'
+        $options.Items.Add($newLabel)
+    }
+
+    foreach ($key in $vmMap.Keys) {
+        if ($key -ne $newLabel) {
+            $options.Items.Add($key)
+        }
+    }
 
     $options.PageSize = $options.Items.Count
 
@@ -546,6 +560,16 @@ This value can be used to populate the MERGE_AVHDX field in templates.
     }
 }
 
+function Invoke-CreateVmConfirmPrompt {
+    param (
+        [Parameter(Mandatory)]
+        [string] $InstanceName
+    )
+
+    $prompt = "The VM you have selected: '$InstanceName' does not exist. Would you like to create it now?"
+    return [Sharprompt.Prompt]::Confirm($prompt)
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -557,4 +581,5 @@ Export-ModuleMember -Function `
     Invoke-InstancePrompt, `
     Invoke-HostnamePrompt, `
     Invoke-VmSwitchPrompt, `
-    Invoke-MergeAvhdxPrompt
+    Invoke-MergeAvhdxPrompt, `
+    Invoke-CreateVmConfirmPrompt
