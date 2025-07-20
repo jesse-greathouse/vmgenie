@@ -451,21 +451,20 @@ Starts a VM if needed, waits for network readiness, then connects via SSH.
     $currentStateName = $script:VmStateMap[[int]$currentState] ?? "Unknown"
 
     if ($currentState -ne $desiredRunningState) {
-        Write-Host "[🟢] VM is not running (state: $currentStateName). Starting it…" -ForegroundColor Yellow
-        Start-VMInstance -InstanceName $guid
-        Wait-VMInstanceState -InstanceName $guid -DesiredState $desiredRunningState -DisplayName $InstanceName
+        Write-Host "[🟢] $InstanceName is not running (state: $currentStateName). Starting it…" -ForegroundColor Yellow
+        Start-VMInstance -InstanceName $InstanceName
     }
     else {
-        Write-Host "[✅] VM is already running (state: $currentStateName)." -ForegroundColor Green
+        Write-Host "[✅] $InstanceName is already running (state: $currentStateName)." -ForegroundColor Green
     }
 
     # Step 2 — wait for network readiness
     $networkReadyState = $script:VmState_NetworkReady
-    Write-Host "[🌐] Waiting for VM network readiness…" -ForegroundColor Yellow
-    Wait-VMInstanceState -InstanceName $guid -DesiredState $networkReadyState -DisplayName $InstanceName
+    Write-Host "[🌐] Waiting for $InstanceName network readiness…" -ForegroundColor Yellow
+    Wait-VMInstanceState -InstanceName $InstanceName -DesiredState $networkReadyState -DisplayName $InstanceName
 
     # Step 3 — get IP and SSH
-    $addresses = Get-VMNetAddress -InstanceName $guid
+    $addresses = Get-VMNetAddress -InstanceName $InstanceName
     $ipv4 = $addresses.IPv4[0]
 
     if (-not $ipv4) {
