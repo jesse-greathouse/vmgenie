@@ -40,6 +40,7 @@ $binDir = (Join-Path $appRoot 'bin').ToString()
 $srcDir = (Join-Path $appRoot 'src').ToString()
 $etcDir = (Join-Path $appRoot 'etc').ToString()
 $varDir = (Join-Path $appRoot 'var').ToString()
+$tmpDir = (Join-Path $appRoot 'tmp').ToString()
 $logDir = (Join-Path $varDir 'log').ToString()
 $cloudDir = (Join-Path $varDir 'cloud').ToString()
 $templateDir = (Join-Path $etcDir 'cloud').ToString()
@@ -64,6 +65,7 @@ $defaults['BIN'] = $binDir
 $defaults['VAR'] = $varDir
 $defaults['ETC'] = $etcDir
 $defaults['SRC'] = $srcDir
+$defaults['TMP'] = $tmpDir
 
 # Map of keys -> prompt functions
 $prompts = @{

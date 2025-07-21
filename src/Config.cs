@@ -50,4 +50,8 @@ public class Config
 
     [YamlMember(Alias = "SRC")]
     public string Src { get; set; } = string.Empty;
+
+
+    [YamlMember(Alias = "TMP")]
+    public string Tmp { get; set; } = string.Empty;
 }
