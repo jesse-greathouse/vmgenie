@@ -11,12 +11,19 @@ namespace VmGenie.EventHandlers;
 /// Handles the "vm" command and responds based on 'action' parameter.
 /// Supported actions: list, details, help (default).
 /// </summary>
-public class VmHandler(VmRepository repository, VmNetAddressRepository netAddressRepository, VmProvisioningService provisioner, VmLifecycleService lifecycle) : IEventHandler
+public class VmHandler(
+    VmRepository repository,
+    VmNetAddressRepository netAddressRepository,
+    VmProvisioningService provisioner,
+    VmLifecycleService lifecycle,
+    CoordinatorService coordinator
+) : IEventHandler
 {
     private readonly VmRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly VmNetAddressRepository _netAddressRepository = netAddressRepository ?? throw new ArgumentNullException(nameof(netAddressRepository));
     private readonly VmProvisioningService _provisioner = provisioner ?? throw new ArgumentNullException(nameof(provisioner));
     private readonly VmLifecycleService _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
+    private readonly CoordinatorService _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
         string action = GetAction(evt);
@@ -65,6 +72,10 @@ public class VmHandler(VmRepository repository, VmNetAddressRepository netAddres
 
             case "shutdown":
                 data = HandleLifecycleAction(evt, _lifecycle.Shutdown);
+                break;
+
+            case "delete":
+                data = HandleDelete(evt, _coordinator);
                 break;
 
             case "state-check":
@@ -340,6 +351,34 @@ public class VmHandler(VmRepository repository, VmNetAddressRepository netAddres
         };
     }
 
+    private static object? HandleDelete(Event evt, CoordinatorService coordinator)
+    {
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement elem ||
+            elem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'id' parameter for delete action.");
+        }
+
+        var vmId = elem.GetString();
+        if (string.IsNullOrWhiteSpace(vmId))
+        {
+            throw new ArgumentException("'id' parameter cannot be empty.");
+        }
+
+        bool force = false;
+        if (evt.Parameters.TryGetValue("force", out var forceObj) &&
+            forceObj is System.Text.Json.JsonElement forceElem &&
+            forceElem.ValueKind == System.Text.Json.JsonValueKind.True)
+        {
+            force = true;
+        }
+
+        coordinator.DeleteInstance(vmId, force);
+
+        return new { id = vmId, status = "deleted" };
+    }
+
     private static string? GetStringParam(object? obj)
     {
         return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
@@ -377,6 +416,7 @@ public class VmHandler(VmRepository repository, VmNetAddressRepository netAddres
                     ["action"] = "net-address",
                     ["description"] = "Returns categorized network addresses for the specified VM id."
                 },
+                new Dictionary<string, string> { ["action"] = "delete", ["description"] = "Deletes a VM by id and removes all associated data." },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]
@@ -397,6 +437,10 @@ public class VmHandler(VmRepository repository, VmNetAddressRepository netAddres
                 new Dictionary<string, object> {
                     ["action"] = "net-address",
                     ["parameters"] = new { action = "net-address", id = "SOME-VM-ID" }
+                },
+                new Dictionary<string, object> {
+                    ["action"] = "delete",
+                    ["parameters"] = new { action = "delete", id = "SOME-VM-ID" }
                 }
             }
         };

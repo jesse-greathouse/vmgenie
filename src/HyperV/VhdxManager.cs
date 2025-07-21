@@ -93,6 +93,44 @@ public class VhdxManager(VmHelper vmHelper, ILogger<VhdxManager> logger)
         return vhdxPath.EndsWith(".avhdx", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Deletes the primary VHDX (or AVHDX) disk associated with the given VM GUID.
+    /// If the disk does not exist, logs and returns gracefully.
+    /// </summary>
+    public void DeleteVhdx(string vmGuid)
+    {
+        if (string.IsNullOrWhiteSpace(vmGuid))
+            throw new ArgumentNullException(nameof(vmGuid));
+
+        var vm = _vmHelper.GetVm(vmGuid);
+
+        if (string.IsNullOrWhiteSpace(vm.HostResourcePath))
+        {
+            _logger.LogWarning("VM '{Name}' [{Guid}] does not have an associated VHDX path to delete.", vm.Name, vm.Id);
+            return;
+        }
+
+        string vhdxPath = vm.HostResourcePath;
+
+        try
+        {
+            if (File.Exists(vhdxPath))
+            {
+                File.Delete(vhdxPath);
+                _logger.LogInformation("Deleted VHDX for VM '{Name}' [{Guid}] at: {Path}", vm.Name, vm.Id, vhdxPath);
+            }
+            else
+            {
+                _logger.LogWarning("VHDX file not found for VM '{Name}' [{Guid}] at: {Path}. Nothing to delete.", vm.Name, vm.Id, vhdxPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete VHDX file for VM '{Name}' [{Guid}] at: {Path}", vm.Name, vm.Id, vhdxPath);
+            throw;
+        }
+    }
+
     private static string GetParentVhdx(string avhdxPath)
     {
         string command = $"(Get-VHD -Path '{avhdxPath}').ParentPath";

@@ -123,6 +123,64 @@ function Resume-VMInstance {
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
 }
 
+function Remove-VMInstance {
+    <#
+    .SYNOPSIS
+    Deletes a VM and all associated artifacts via the CoordinatorService.
+    .PARAMETER InstanceName
+    Optional instance name or GUID. If omitted, presents a selection prompt (no "New" option).
+    #>
+    [CmdletBinding()]
+    param(
+        [string] $InstanceName
+    )
+
+    # If InstanceName not provided, prompt for selection (without -New option)
+    if (-not $InstanceName) {
+        $selection = Invoke-VmPrompt -Provisioned 'only'
+        if (-not $selection) {
+            throw "[❌] No VM selected for deletion."
+        }
+        $guid = $selection.Id
+        $DisplayName = $selection.Name
+    }
+    else {
+        $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+        $guid = $resolved.Guid
+        $DisplayName = $resolved.DisplayName
+    }
+
+    # Confirm before deleting
+    $confirm = Read-Host "Are you sure you want to delete VM '$DisplayName' [$guid]? This operation is destructive. Type 'yes' to confirm"
+    if ($confirm -ne 'yes') {
+        Write-Host "[❌] Deletion cancelled by user." -ForegroundColor Red
+        return
+    }
+
+    Write-Host "[⚙ ] Working on Deleting $DisplayName …" -ForegroundColor Yellow
+
+    $script:DeleteError = $null
+
+    $parameters = @{
+        action = 'delete'
+        id     = $guid
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:DeleteError = $Response.data
+        }
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:DeleteError) {
+        throw "[❌] Service error during deletion: $script:DeleteError"
+    }
+
+    Write-Host "[✅] VM '$DisplayName' [$guid] deleted successfully." -ForegroundColor Green
+}
+
 function Stop-VMInstanceGracefully {
     [CmdletBinding()]
     param (
@@ -1015,6 +1073,7 @@ Export-ModuleMember -Function `
     Suspend-VMInstance, `
     Resume-VMInstance, `
     Stop-VMInstanceGracefully, `
+    Remove-VMInstance, `
     Connect-VMInstance, `
     Invoke-ProvisionVm, `
     Publish-VmArtifact, `

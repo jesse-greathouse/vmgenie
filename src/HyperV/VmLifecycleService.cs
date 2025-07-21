@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Linq;
 
 using Microsoft.Extensions.Logging;
@@ -134,6 +135,71 @@ if ($ip) {{ exit 0 }} else {{ exit 2 }}
             .FirstOrDefault() ?? throw new InvalidOperationException($"VM with GUID {vmGuid} not found.");
 
         return (VmState)(ushort)(vm.CimInstanceProperties["EnabledState"].Value ?? 0);
+    }
+
+    /// <summary>
+    /// Deletes a VM from Hyper-V by GUID. Powers off the VM if necessary.
+    /// </summary>
+    public void Delete(string vmGuid, bool force = false)
+    {
+        if (string.IsNullOrWhiteSpace(vmGuid))
+            throw new ArgumentNullException(nameof(vmGuid));
+
+        // Lookup VM (throws if not found)
+        var vm = _vmHelper.GetVm(vmGuid);
+
+        // 1. If the VM is running (or not off), stop it first.
+        var state = GetCurrentState(vmGuid);
+        if (state != VmState.Off)
+        {
+            _logger.LogInformation("Stopping VM {Name} [{Guid}] before deletion. Current state: {State}", vm.Name, vmGuid, state);
+            try
+            {
+                // Try graceful shutdown, then fallback to Stop if not Off
+                Shutdown(vmGuid);
+
+                // Wait for shutdown (polling, or immediate if state changes quickly)
+                var timeout = TimeSpan.FromSeconds(20);
+                var stopTime = DateTime.Now + timeout;
+                while (GetCurrentState(vmGuid) != VmState.Off && DateTime.Now < stopTime)
+                {
+                    Thread.Sleep(500);
+                }
+
+                if (GetCurrentState(vmGuid) != VmState.Off)
+                {
+                    _logger.LogWarning("VM {Name} [{Guid}] did not shut down gracefully. Forcing power off.", vm.Name, vmGuid);
+                    Stop(vmGuid);
+
+                    // Wait again for power off
+                    stopTime = DateTime.Now + timeout;
+                    while (GetCurrentState(vmGuid) != VmState.Off && DateTime.Now < stopTime)
+                    {
+                        Thread.Sleep(500);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while stopping VM {Name} [{Guid}] before deletion.", vm.Name, vmGuid);
+                if (!force)
+                    throw;
+            }
+        }
+
+        // 2. Remove the VM from Hyper-V using PowerShell (correct usage: Get-VM -Id ... | Remove-VM -Force)
+        try
+        {
+            string removeVmCmd = $"Get-VM -Id '{vmGuid}' | Remove-VM -Force";
+            PowerShellHelper.Run(removeVmCmd);
+            _logger.LogInformation("Deleted VM {Name} [{Guid}] from Hyper-V.", vm.Name, vmGuid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to remove VM {Name} [{Guid}] from Hyper-V.", vm.Name, vmGuid);
+            if (!force)
+                throw;
+        }
     }
 
     private void ChangeVmState(string vmGuid, VmState requestedState)
