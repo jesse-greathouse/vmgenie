@@ -78,6 +78,11 @@ public class VmHandler(
                 data = HandleDelete(evt, _coordinator);
                 break;
 
+            case "export":
+                data = await HandleExportAsync(evt, ctx, _coordinator, token);
+                if (data is null) return;
+                break;
+
             case "state-check":
                 data = HandleStateCheck(evt, _lifecycle);
                 break;
@@ -379,6 +384,60 @@ public class VmHandler(
         return new { id = vmId, status = "deleted" };
     }
 
+    private static async Task<object?> HandleExportAsync(
+        Event evt,
+        IWorkerContext ctx,
+        CoordinatorService coordinator,
+        CancellationToken token)
+    {
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement elem ||
+            elem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "Missing or invalid 'id' parameter for export action."),
+                token);
+            return null;
+        }
+
+        var instanceId = elem.GetString();
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "'id' parameter cannot be empty."),
+                token);
+            return null;
+        }
+
+        try
+        {
+            // Do the export orchestration (may throw).
+            var export = coordinator.ExportInstance(instanceId);
+
+            return new
+            {
+                id = instanceId,
+                status = "exported",
+                archive = new
+                {
+                    path = export.ArchiveUri,
+                    name = export.ArchiveName,
+                    createdDate = export.CreatedDate,
+                    updatedDate = export.UpdatedDate,
+                    instanceName = export.InstanceName,
+                    instanceId = export.InstanceId
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, $"Export failed: {ex.Message}"),
+                token);
+            return null;
+        }
+    }
+
     private static string? GetStringParam(object? obj)
     {
         return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
@@ -417,6 +476,7 @@ public class VmHandler(
                     ["description"] = "Returns categorized network addresses for the specified VM id."
                 },
                 new Dictionary<string, string> { ["action"] = "delete", ["description"] = "Deletes a VM by id and removes all associated data." },
+                new Dictionary<string, string> { ["action"] = "export", ["description"] = "Exports a VM and all artifacts as a .zip archive. Parameter: id = VM GUID." },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]

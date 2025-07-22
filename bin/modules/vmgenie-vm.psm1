@@ -181,6 +181,130 @@ function Remove-VMInstance {
     Write-Host "[✅] VM '$DisplayName' [$guid] deleted successfully." -ForegroundColor Green
 }
 
+function Export-VMInstance {
+    <#
+    .SYNOPSIS
+    Export a VM and all artifacts as a .zip archive.
+    .DESCRIPTION
+    Prompts for the VM if not specified. If the VM is running, allows user to pause, export live (crash-consistent), or cancel.
+    .PARAMETER InstanceName
+    (Optional) Name or GUID of the VM instance to export.
+    #>
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    # 1. Resolve instance to GUID and display name.
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
+
+    Write-Verbose "[INFO] Preparing to export VM: $DisplayName [$guid]"
+
+    # 2. Check current VM state.
+    $script:StateResult = $null
+    $script:StateError = $null
+
+    $parameters = @{
+        action = 'state-check'
+        id     = $guid
+        state  = $script:VmState_Running
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:StateError = $Response.data
+        }
+        else {
+            $script:StateResult = $Response.data
+        }
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:StateError) {
+        throw "[❌] Service error during state-check: $script:StateError"
+    }
+
+    $isRunning = $script:StateResult.matches
+    $currentState = $script:StateResult.currentState
+    $currentStateName = Get-StateName -State $currentState
+
+    # 3. If running, confirm user intent.
+    if ($isRunning) {
+        $decision = Invoke-ExportVmWhileRunningPrompt -InstanceName $DisplayName -VmState $currentStateName
+
+        switch ($decision) {
+            "cancel" {
+                Write-Host "[❌] Export cancelled by user." -ForegroundColor Red
+                return
+            }
+            "pause" {
+                Write-Host "[⏸️] Pausing VM $DisplayName before export..." -ForegroundColor Yellow
+                Suspend-VMInstance -InstanceName $guid
+                # Wait for Paused state
+                Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Paused -DisplayName $DisplayName
+                Write-Host "[✅] VM $DisplayName paused. Proceeding with export." -ForegroundColor Green
+            }
+            "live" {
+                Write-Host "[⚡] Proceeding to export VM $DisplayName while RUNNING (crash-consistent)." -ForegroundColor Yellow
+            }
+            default {
+                Write-Host "[❌] Unrecognized response from export prompt, cancelling." -ForegroundColor Red
+                return
+            }
+        }
+    }
+    else {
+        Write-Host "[ℹ️] VM $DisplayName is in state: $currentStateName ($currentState). Proceeding with export." -ForegroundColor Cyan
+    }
+
+    # 4. Send export event to the service.
+    $script:ExportError = $null
+    $script:ExportResult = $null
+
+    $exportParams = @{
+        action = 'export'
+        id     = $guid
+    }
+
+    Write-Host "[⚙ ] Exporting $DisplayName..." -ForegroundColor Yellow
+
+    Send-Event -Command 'vm' -Parameters $exportParams -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:ExportError = $Response.data
+        }
+        else {
+            $script:ExportResult = $Response.data.archive
+        }
+        Complete-Request -Id $Response.id
+    } -TimeoutSeconds 300 | Out-Null
+
+    # 5. If we paused the VM earlier, resume it now.
+    if ($isRunning -and $decision -eq "pause") {
+        Write-Host "[▶️] Resuming VM $DisplayName after export..." -ForegroundColor Yellow
+        Resume-VMInstance -InstanceName $guid
+        Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
+        Write-Host "[✅] VM $DisplayName resumed." -ForegroundColor Green
+    }
+
+    if ($script:ExportError) {
+        throw "[❌] Export failed: $script:ExportError"
+    }
+
+    if ($null -eq $script:ExportResult -or -not $script:ExportResult.path) {
+        throw "[❌] No archive returned from export operation."
+    }
+
+    Write-Host "[✅] VM '$DisplayName' exported successfully to archive:" -ForegroundColor Green
+    Write-Host "     $($script:ExportResult.path)" -ForegroundColor Green
+
+    # Optionally return the archive info as output object
+    return $script:ExportResult
+}
+
 function Stop-VMInstanceGracefully {
     [CmdletBinding()]
     param (
@@ -1074,6 +1198,7 @@ Export-ModuleMember -Function `
     Resume-VMInstance, `
     Stop-VMInstanceGracefully, `
     Remove-VMInstance, `
+    Export-VMInstance, `
     Connect-VMInstance, `
     Invoke-ProvisionVm, `
     Publish-VmArtifact, `

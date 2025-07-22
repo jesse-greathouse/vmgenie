@@ -48,6 +48,60 @@ public class VmProvisioningService(
         return FetchProvisionedVm(instanceName);
     }
 
+    public void ExportVm(string instanceId, string destinationFolder)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+            throw new ArgumentNullException(nameof(instanceId));
+        if (string.IsNullOrWhiteSpace(destinationFolder))
+            throw new ArgumentNullException(nameof(destinationFolder));
+
+        // Defensive: VM must exist
+        var vm = _vmHelper.GetVm(instanceId) ?? throw new InvalidOperationException($"Cannot export: VM with InstanceId '{instanceId}' does not exist in Hyper-V.");
+        string instanceName = vm.Name;
+
+        _logger.LogInformation(
+            "Exporting VM '{InstanceName}' (InstanceId: {InstanceId}) to '{DestinationFolder}' via Hyper-V Export-VM.",
+            instanceName, instanceId, destinationFolder);
+
+        string cmd = $@"
+Export-VM -Name '{instanceName}' -Path '{destinationFolder}'| Out-Null
+";
+        try
+        {
+            RunPowershellCommand("Export-VM", cmd);
+
+            // --- Flatten the exported directory structure ---
+            string exportedVmFolder = Path.Combine(destinationFolder, instanceName);
+            if (Directory.Exists(exportedVmFolder))
+            {
+                foreach (var entry in Directory.EnumerateFileSystemEntries(exportedVmFolder))
+                {
+                    var dest = Path.Combine(destinationFolder, Path.GetFileName(entry));
+                    // Move folder or file up one level
+                    if (Directory.Exists(entry))
+                        Directory.Move(entry, dest);
+                    else
+                        File.Move(entry, dest);
+                }
+                // Delete the now-empty VM-named folder
+                Directory.Delete(exportedVmFolder, recursive: true);
+            }
+
+            _logger.LogInformation(
+                "VM '{InstanceName}' (InstanceId: {InstanceId}) exported and flattened successfully to '{DestinationFolder}'.",
+                instanceName, instanceId, destinationFolder);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to export VM '{InstanceName}' (InstanceId: {InstanceId}) to '{DestinationFolder}'.",
+                instanceName, instanceId, destinationFolder);
+            throw;
+        }
+    }
+
+
     private void EnsureVmDoesNotExist(string instanceName)
     {
         var vmExists = _vmHelper.GetVmByName(instanceName);
@@ -121,10 +175,7 @@ Set-VMDvdDrive -VMName '{instanceName}' -Path '{isoPath}' | Out-Null
 
     private Vm FetchProvisionedVm(string instanceName)
     {
-        var vm = _vmHelper.GetVmByName(instanceName);
-        if (vm == null)
-            throw new InvalidOperationException($"Provisioned VM '{instanceName}' not found.");
-
+        var vm = _vmHelper.GetVmByName(instanceName) ?? throw new InvalidOperationException($"Provisioned VM '{instanceName}' not found.");
         _logger.LogInformation("VM provisioning completed successfully: {InstanceName}", instanceName);
         return vm;
     }

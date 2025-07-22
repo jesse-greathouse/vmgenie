@@ -76,6 +76,17 @@ public class InstanceRepository
         return instances;
     }
 
+    public void StageInstanceForExport(string instanceName, string destinationFolder)
+    {
+        var instance = GetByName(instanceName) ?? throw new InvalidOperationException($"Instance '{instanceName}' not found.");
+
+        // Defensive: ensure dest doesn't exist
+        if (Directory.Exists(destinationFolder))
+            throw new InvalidOperationException($"Destination folder '{destinationFolder}' already exists.");
+
+        DirectoryCopy(instance.Path, destinationFolder, copySubDirs: true);
+    }
+
     public List<string> GetInstanceNames()
     {
         return [.. GetAll().ConvertAll(i => i.Name)];
@@ -99,5 +110,28 @@ public class InstanceRepository
         public string VmSwitch { get; set; } = "";
         public string Username { get; set; } = "";
         public bool MergeAvhdx { get; set; }
+    }
+
+    /// <summary>
+    /// Recursively copy a directory (helper).
+    /// </summary>
+    private static void DirectoryCopy(string sourceDirName, string destDirName, bool copySubDirs)
+    {
+        DirectoryInfo dir = new(sourceDirName);
+
+        if (!dir.Exists)
+            throw new DirectoryNotFoundException($"Source directory not found: {sourceDirName}");
+
+        DirectoryInfo[] dirs = dir.GetDirectories();
+        Directory.CreateDirectory(destDirName);
+
+        foreach (FileInfo file in dir.GetFiles())
+            file.CopyTo(Path.Combine(destDirName, file.Name), false);
+
+        if (copySubDirs)
+        {
+            foreach (DirectoryInfo subdir in dirs)
+                DirectoryCopy(subdir.FullName, Path.Combine(destDirName, subdir.Name), true);
+        }
     }
 }

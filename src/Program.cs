@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 
+using VmGenie.Artifacts;
 using VmGenie.HyperV;
 using VmGenie.Template;
 
@@ -33,16 +34,18 @@ public class Program
             .ConfigureServices(services =>
             {
                 services.AddSingleton(config);
+                services.AddSingleton<ArchiveManager>();
+                services.AddSingleton<CoordinatorService>();
+                services.AddSingleton<ExportRepository>();
+                services.AddSingleton<InstanceRepository>();
                 services.AddSingleton<OperatingSystemTemplateRepository>();
+                services.AddSingleton<VhdxManager>();
                 services.AddSingleton<VmHelper>();
+                services.AddSingleton<VmLifecycleService>();
+                services.AddSingleton<VmNetAddressRepository>();
+                services.AddSingleton<VmProvisioningService>();
                 services.AddSingleton<VmRepository>();
                 services.AddSingleton<VmSwitchRepository>();
-                services.AddSingleton<VmNetAddressRepository>();
-                services.AddSingleton<VmLifecycleService>();
-                services.AddSingleton<VmProvisioningService>();
-                services.AddSingleton<VhdxManager>();
-                services.AddSingleton<Artifacts.InstanceRepository>();
-                services.AddSingleton<CoordinatorService>();
                 services.AddSingleton(provider => EventHandlerEngineBuilder.Build(provider));
                 services.AddHostedService<Worker>();
             })

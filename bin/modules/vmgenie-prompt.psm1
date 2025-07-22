@@ -570,6 +570,39 @@ function Invoke-CreateVmConfirmPrompt {
     return [Sharprompt.Prompt]::Confirm($prompt)
 }
 
+function Invoke-ExportVmWhileRunningPrompt {
+    param (
+        [string] $InstanceName,
+        [string] $VmState
+    )
+
+    # Print warning separately so it's not redrawn on cursor movement
+    Write-Host "⚠️  The virtual machine '$InstanceName' is currently in state: $VmState." -ForegroundColor Yellow
+    Write-Host "Exporting a running VM will only produce a *crash-consistent* snapshot." -ForegroundColor Yellow
+    Write-Host "This may lead to data loss or require recovery on next boot. For best results, pause or shut down the VM before exporting." -ForegroundColor Yellow
+    Write-Host ""
+
+    $choices = [System.Collections.Generic.List[string]]::new()
+    $choices.Add("Pause the VM, then export (recommended, minimal interruption)")
+    $choices.Add("Export while running (crash-consistent, may risk data loss)")
+    $choices.Add("Do not export (cancel)")
+
+    $options = [Sharprompt.SelectOptions[string]]::new()
+    $options.Message = "How would you like to proceed?"
+    $options.Items = $choices
+    $options.DefaultValue = $choices[0]  # recommend pausing by default
+    $options.PageSize = 3
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+
+    switch ($selected) {
+        { $_ -like "Pause the VM*" } { return "pause" }
+        { $_ -like "Export while running*" } { return "live" }
+        { $_ -like "Do not export*" } { return "cancel" }
+        default { return "cancel" }
+    }
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -582,4 +615,5 @@ Export-ModuleMember -Function `
     Invoke-HostnamePrompt, `
     Invoke-VmSwitchPrompt, `
     Invoke-MergeAvhdxPrompt, `
-    Invoke-CreateVmConfirmPrompt
+    Invoke-CreateVmConfirmPrompt, `
+    Invoke-ExportVmWhileRunningPrompt
