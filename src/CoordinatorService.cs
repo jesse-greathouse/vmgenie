@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+
 using Microsoft.Extensions.Logging;
-using VmGenie.HyperV;
+
 using VmGenie.Artifacts;
+using VmGenie.HyperV;
 
 namespace VmGenie;
 
