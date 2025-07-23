@@ -105,6 +105,41 @@ Export-VM -Name '{instanceName}' -Path '{destinationFolder}'| Out-Null
         }
     }
 
+    public void SwapIso(string instanceId, string isoPath)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+            throw new ArgumentNullException(nameof(instanceId));
+        if (string.IsNullOrWhiteSpace(isoPath) || !File.Exists(isoPath))
+            throw new ArgumentException("ISO path does not exist.", nameof(isoPath));
+
+        var vm = _vmHelper.GetVm(instanceId) ?? throw new InvalidOperationException($"VM with GUID '{instanceId}' not found.");
+        EnsureDvdDriveExists(vm.Name);
+
+        // Detach ISO
+        RunPowershellCommand("Detach old ISO", $@"Set-VMDvdDrive -VMName '{vm.Name}' -Path $null | Out-Null");
+
+        // Wait up to 3 seconds for ISO to actually detach
+        bool detached = false;
+        for (int i = 0; i < 15; i++)
+        {
+            string query = $@"(Get-VM -Name '{vm.Name}' | Get-VMDvdDrive).Path";
+            var result = PowerShellHelper.Run(query).Trim();
+            if (string.IsNullOrEmpty(result) || result.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                detached = true;
+                break;
+            }
+            _logger.LogInformation("Waiting for ISO to eject from VM: {InstanceName}...", vm.Name);
+            System.Threading.Thread.Sleep(200);
+        }
+        if (!detached)
+            _logger.LogWarning("Timeout waiting for ISO to detach for VM: {InstanceName}", vm.Name);
+
+        // Attach new ISO
+        AttachIso(vm.Name, isoPath);
+        _logger.LogInformation("ISO swapped for VM: {InstanceName} ({InstanceId}) -> {IsoPath}", vm.Name, instanceId, isoPath);
+    }
+
     /// <summary>
     /// Imports a VM using Hyper-V's Import-VM, either as a restore (same ID) or copy (new ID).
     /// - export: The Export metadata object (source of instance name, etc).
@@ -120,62 +155,90 @@ Export-VM -Name '{instanceName}' -Path '{destinationFolder}'| Out-Null
         if (!Directory.Exists(location))
             throw new DirectoryNotFoundException($"Import location not found: {location}");
 
+        if (copy)
+            return ImportVmCopy(export, location);
+        else
+            return ImportVmRestore(export, location);
+    }
+
+    private Vm ImportVmRestore(Export export, string location)
+    {
         _logger.LogInformation(
-            "Beginning VM import: InstanceName={InstanceName}, ImportLocation={Location}, Mode={Mode}",
-            export.InstanceName, location, copy ? "Copy (new ID)" : "Restore (existing ID)");
+            "Beginning VM restore: InstanceName={InstanceName}, ImportLocation={Location}",
+            export.InstanceName, location);
 
-        // Defensive: If VM with same name exists and we're not copying, enforce safety checks before deletion
-        if (!copy)
+        var existingVm = _vmHelper.GetVmByName(export.InstanceName);
+        if (existingVm != null)
         {
-            var existingVm = _vmHelper.GetVmByName(export.InstanceName);
-            if (existingVm != null)
+            if (VmLifecycleService.IsRunning(existingVm.Id))
             {
-                if (VmLifecycleService.IsRunning(existingVm.Id))
-                {
-                    throw new InvalidOperationException($"Refusing to restore: VM '{export.InstanceName}' [{existingVm.Id}] is currently running. Please shut down the VM before restoring.");
-                }
-
-                _logger.LogWarning("Deleting existing .vhdx virtual hard drive for '{InstanceName}'", export.InstanceName);
-                _vhdxManager.DeleteVhdx(existingVm.Id);
-
-                _logger.LogWarning("VM with name '{InstanceName}' already exists and is not running. Deleting before restore...", export.InstanceName);
-                _vmLifecycleService.Delete(existingVm.Id, force: true);
+                throw new InvalidOperationException(
+                    $"Refusing to restore: VM '{export.InstanceName}' [{existingVm.Id}] is currently running. Please shut down the VM before restoring.");
             }
+
+            _logger.LogWarning("Deleting existing .vhdx virtual hard drive for '{InstanceName}'", export.InstanceName);
+            _vhdxManager.DeleteVhdx(existingVm.Id);
+
+            _logger.LogWarning("VM with name '{InstanceName}' already exists and is not running. Deleting before restore...", export.InstanceName);
+            _vmLifecycleService.Delete(existingVm.Id, force: true);
         }
 
         string vmcxFile = Path.Combine(location, "Virtual Machines", $"{export.InstanceId}.vmcx");
         if (!File.Exists(vmcxFile))
             throw new FileNotFoundException($"Could not find vmcx file at {vmcxFile}");
 
-        // Pass the extracted folder (with Virtual Machines, etc) as the path
-        string importModeArgs = copy
-            ? "-Copy -GenerateNewId"
-            : "-Copy -GenerateNewId:$false";
+        string importModeArgs = "-Copy -GenerateNewId:$false";
         string cmd = $@"
 Import-VM -Path '{vmcxFile}' {importModeArgs} | Out-Null
 ";
 
-        try
-        {
-            RunPowershellCommand("Import-VM", cmd);
+        RunPowershellCommand("Import-VM", cmd);
 
-            var importedVm = _vmHelper.GetVmByName(export.InstanceName)
-                ?? throw new InvalidOperationException($"VM import succeeded but VM '{export.InstanceName}' not found in Hyper-V.");
+        var importedVm = _vmHelper.GetVmByName(export.InstanceName)
+            ?? throw new InvalidOperationException($"VM import succeeded but VM '{export.InstanceName}' not found in Hyper-V.");
 
-            _logger.LogInformation(
-                "VM import completed successfully: {InstanceName} (Mode: {Mode})",
-                export.InstanceName, copy ? "Copy" : "Restore");
+        _logger.LogInformation("VM restore completed successfully: {InstanceName}", export.InstanceName);
+        return importedVm;
+    }
 
-            return importedVm;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to import VM '{InstanceName}' from '{Location}'.",
-                export.InstanceName, location);
-            throw;
-        }
+    private Vm ImportVmCopy(Export export, string location)
+    {
+        _logger.LogInformation(
+            "Beginning VM copy import: InstanceName={InstanceName}, ImportLocation={Location}",
+            export.InstanceName, location);
+
+        string vmcxFile = Path.Combine(location, "Virtual Machines", $"{export.InstanceId}.vmcx");
+        if (!File.Exists(vmcxFile))
+            throw new FileNotFoundException($"Could not find vmcx file at {vmcxFile}");
+
+        string oldVhdxPath = _vmHelper.GetVhdxPathForVm(export.InstanceId);
+        string vhdxParentDir = Path.GetDirectoryName(oldVhdxPath)!;
+        string copySubDir = Path.Combine(vhdxParentDir, export.InstanceName);
+        Directory.CreateDirectory(copySubDir);
+
+        // Import and get the new VM's GUID
+        string importCmd = $@"
+$vm = Import-VM -Path '{vmcxFile}' -Copy -GenerateNewId -VhdDestinationPath '{copySubDir.Replace("'", "''")}'; 
+$vm.Id.ToString()
+";
+        string importedVmId = RunPowershellAndCaptureOutput("Import-VM (capture GUID)", importCmd);
+
+        if (string.IsNullOrEmpty(importedVmId))
+            throw new InvalidOperationException("Could not determine imported VM's GUID from Import-VM output.");
+
+        // Rename using the VM object, not -Id
+        string renameCmd = $@"
+Rename-VM -VM (Get-VM -Id '{importedVmId}') -NewName '{export.InstanceName}' | Out-Null
+";
+        RunPowershellCommand("Rename-VM", renameCmd);
+
+        // Fetch and return by GUID
+        var importedVm = _vmHelper.GetVm(importedVmId)
+            ?? throw new InvalidOperationException($"Imported VM with GUID '{importedVmId}' not found in Hyper-V.");
+
+        _logger.LogInformation("VM copy import completed and VM renamed: {InstanceName} (GUID: {Guid})", export.InstanceName, importedVmId);
+
+        return importedVm;
     }
 
     private void EnsureVmDoesNotExist(string instanceName)
@@ -264,5 +327,11 @@ Set-VMDvdDrive -VMName '{instanceName}' -Path '{isoPath}' | Out-Null
         {
             _logger.LogInformation("{Description} output:\n{Output}", description, output);
         }
+    }
+
+    private string RunPowershellAndCaptureOutput(string description, string cmd)
+    {
+        _logger.LogInformation("Running PowerShell (capture) {Description} command:\n{Command}", description, cmd.Trim());
+        return PowerShellHelper.Run(cmd).Trim();
     }
 }

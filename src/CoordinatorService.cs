@@ -177,10 +177,19 @@ public class CoordinatorService(
         // Import into Hyper-V
         try
         {
-            _provisioningService.ImportVm(export, tmpFolder, copy: mode == ImportMode.Copy);
+            // Capture the returned VM object from ImportVm
+            var importedVm = _provisioningService.ImportVm(export, tmpFolder, copy: mode == ImportMode.Copy);
 
             // Stage artifacts to canonical instance directory
             _archiveManager.StageCopiedInstanceArtifacts(export);
+
+            if (mode == ImportMode.Copy)
+            {
+                // Compute new iso path based on how you stage the copy
+                var newIsoPath = Path.Combine(_config.CloudDir, export.InstanceName, "seed.iso");
+                // Use the actual imported VM's GUID
+                _provisioningService.SwapIso(importedVm.Id, newIsoPath);
+            }
 
             _logger.LogInformation("Import completed successfully: {InstanceName} (Mode: {Mode})", export.InstanceName, mode);
             return export;

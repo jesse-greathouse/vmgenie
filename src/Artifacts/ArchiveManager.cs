@@ -96,12 +96,6 @@ public class ArchiveManager(Config config, ILogger<ArchiveManager> logger)
         string newPemPub = Path.Combine(tmpDir, $"{newExport.InstanceName}.pem.pub");
         if (File.Exists(oldPemPub)) File.Move(oldPemPub, newPemPub);
 
-        // VHDX
-        string disksDir = Path.Combine(tmpDir, Export.VirtualHardDisksDir);
-        string oldVhdx = Path.Combine(disksDir, $"{oldExport.InstanceName}.vhdx");
-        string newVhdx = Path.Combine(disksDir, $"{newExport.InstanceName}.vhdx");
-        if (File.Exists(oldVhdx)) File.Move(oldVhdx, newVhdx);
-
         // If metadata.yml includes the old instance name, update it
         string metadataPath = Path.Combine(tmpDir, Export.MetadataFile);
         if (File.Exists(metadataPath))
