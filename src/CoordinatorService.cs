@@ -30,11 +30,11 @@ public class CoordinatorService(
     /// </summary>
     public void DeleteInstance(string instanceId, bool force = false)
     {
-        // 1. Lookup VM and instance by GUID.
+        // Lookup VM and instance by GUID.
         var vm = _vmHelper.GetVm(instanceId); // Throws if not found.
         var instance = _instanceRepo.GetByName(vm.Name) ?? throw new InvalidOperationException($"No instance artifact found for VM: {vm.Name} [{instanceId}]");
 
-        // 2. Ensure VM is off, delete VM from Hyper-V by GUID.
+        // Ensure VM is off, delete VM from Hyper-V by GUID.
         try
         {
             _vmLifecycle.Delete(instanceId, force: force); // Change VmLifecycleService.Delete to take GUID.
@@ -44,7 +44,7 @@ public class CoordinatorService(
             _logger.LogError(ex, "Failed to delete VM from Hyper-V for {Name} [{Id}]", vm.Name, instanceId);
         }
 
-        // 3. Delete VHDX disk(s) using VhdxManager by GUID.
+        // Delete VHDX disk(s) using VhdxManager by GUID.
         try
         {
             _vhdxManager.DeleteVhdx(instanceId); // Change VhdxManager.DeleteVhdx to take GUID.
@@ -54,7 +54,7 @@ public class CoordinatorService(
             _logger.LogError(ex, "Failed to delete VHDX for {Name} [{Id}]", vm.Name, instanceId);
         }
 
-        // 4. Delete instance artifacts (cloud-init ISO, metadata, dir).
+        // Delete instance artifacts (cloud-init ISO, metadata, dir).
         try
         {
             if (System.IO.Directory.Exists(instance.Path))
@@ -65,7 +65,7 @@ public class CoordinatorService(
             _logger.LogError(ex, "Failed to delete artifact directory: {Path}", instance.Path);
         }
 
-        // 5. Remove from VM helper cache (by GUID).
+        // Remove from VM helper cache (by GUID).
         try
         {
             _vmHelper.RemoveFromCache(instanceId);
@@ -81,11 +81,11 @@ public class CoordinatorService(
 
     public Export ExportInstance(string instanceId)
     {
-        // 1. Lookup VM and instance artifact by GUID.
+        // Lookup VM and instance artifact by GUID.
         var vm = _vmHelper.GetVm(instanceId) ?? throw new InvalidOperationException($"VM not found for InstanceId: {instanceId}");
         var instance = _instanceRepo.GetByName(vm.Name) ?? throw new InvalidOperationException($"No instance artifact found for VM: {vm.Name} [{instanceId}]");
 
-        // 2. Generate unique temp folder for export.
+        // Generate unique temp folder for export.
         string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd-HH-mm-ss");
         string archiveName = $"{instance.Name}_{instanceId}_{timestamp}.zip";
         string archiveDir = Path.Combine(_config.Var, "export");
@@ -97,16 +97,16 @@ public class CoordinatorService(
 
         try
         {
-            // 3. Copy instance artifacts to temp.
+            // Copy instance artifacts to temp.
             _instanceRepo.StageInstanceForExport(instance.Name, tmpFolder);
 
-            // 4. Export VM (Hyper-V) to the same temp folder.
+            // Export VM (Hyper-V) to the same temp folder.
             _provisioningService.ExportVm(instanceId, tmpFolder);
 
-            // 5. Use FromArchiveUri for export metadata.
+            // Use FromArchiveUri for export metadata.
             var export = Export.FromArchiveUri(archiveUri);
 
-            // 6. Create archive from temp.
+            // Create archive from temp.
             _archiveManager.ZipExport(export);
 
             _logger.LogInformation("Export completed: {Archive} ({Timestamp})", export.ArchiveUri, timestamp);
@@ -120,7 +120,7 @@ public class CoordinatorService(
         }
         finally
         {
-            // 7. Clean up temp directory if it still exists.
+            // Clean up temp directory if it still exists.
             try
             {
                 if (Directory.Exists(tmpFolder))
@@ -133,4 +133,73 @@ public class CoordinatorService(
         }
     }
 
+    /// <summary>
+    /// Imports a VM instance from an export archive. Supports 'copy' (new instance name/ID) and 'restore' (original identity) modes.
+    /// </summary>
+    /// <param name="archiveUri">Path to the exported archive (zip).</param>
+    /// <param name="mode">'copy' for new instance, 'restore' for backup restore.</param>
+    /// <param name="newInstanceName">Required if mode is 'copy'.</param>
+    /// <returns>The new Export metadata object for the imported VM.</returns>
+    public Export ImportInstance(
+        string archiveUri,
+        ImportMode mode = ImportMode.Restore,
+        string? newInstanceName = null)
+    {
+        if (string.IsNullOrWhiteSpace(archiveUri))
+            throw new ArgumentNullException(nameof(archiveUri));
+        if (!File.Exists(archiveUri))
+            throw new FileNotFoundException("Export archive not found.", archiveUri);
+
+        Export export;
+        string tmpFolder;
+
+        // Handle Copy or Restore Mode
+        if (mode == ImportMode.Copy)
+        {
+            if (string.IsNullOrWhiteSpace(newInstanceName))
+                throw new ArgumentNullException(nameof(newInstanceName), "New instance name must be provided for copy mode.");
+
+            export = _archiveManager.CopyExportAsNewInstance(archiveUri, newInstanceName);
+            tmpFolder = _archiveManager.GetTmpFolder(export);
+        }
+        else if (mode == ImportMode.Restore)
+        {
+            export = _archiveManager.UnzipExport(archiveUri);
+            tmpFolder = _archiveManager.GetTmpFolder(export);
+        }
+        else
+        {
+            throw new ArgumentException($"Unknown import mode '{mode}'.", nameof(mode));
+        }
+
+        // Import into Hyper-V
+        try
+        {
+            _provisioningService.ImportVm(export, tmpFolder, copy: mode == ImportMode.Copy);
+
+            // Stage artifacts to canonical instance directory
+            _archiveManager.StageCopiedInstanceArtifacts(export);
+
+            _logger.LogInformation("Import completed successfully: {InstanceName} (Mode: {Mode})", export.InstanceName, mode);
+            return export;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to import instance from archive: {Archive} (Mode: {Mode})", archiveUri, mode);
+            throw;
+        }
+        finally
+        {
+            // Cleanup temp folder
+            try
+            {
+                if (Directory.Exists(tmpFolder))
+                    Directory.Delete(tmpFolder, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean up temp import directory: {TmpFolder}", tmpFolder);
+            }
+        }
+    }
 }

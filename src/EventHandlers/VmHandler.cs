@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+using VmGenie.Artifacts;
 using VmGenie.HyperV;
 
 namespace VmGenie.EventHandlers;
@@ -80,6 +81,11 @@ public class VmHandler(
 
             case "export":
                 data = await HandleExportAsync(evt, ctx, _coordinator, token);
+                if (data is null) return;
+                break;
+
+            case "import":
+                data = await HandleImportAsync(evt, ctx, _coordinator, token);
                 if (data is null) return;
                 break;
 
@@ -438,6 +444,81 @@ public class VmHandler(
         }
     }
 
+    private static async Task<object?> HandleImportAsync(
+        Event evt,
+        IWorkerContext ctx,
+        CoordinatorService coordinator,
+        CancellationToken token)
+    {
+        if (!evt.Parameters.TryGetValue("archive", out var archiveObj) ||
+            archiveObj is not System.Text.Json.JsonElement archiveElem ||
+            archiveElem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "Missing or invalid 'archive' parameter for import action."),
+                token);
+            return null;
+        }
+
+        var archiveUri = archiveElem.GetString();
+        if (string.IsNullOrWhiteSpace(archiveUri))
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "'archive' parameter cannot be empty."),
+                token);
+            return null;
+        }
+
+        // Optional: mode (defaults to Restore)
+        ImportMode mode = ImportMode.Restore;
+        if (evt.Parameters.TryGetValue("mode", out var modeObj) &&
+            modeObj is System.Text.Json.JsonElement modeElem &&
+            modeElem.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            var modeStr = modeElem.GetString();
+            if (!string.IsNullOrWhiteSpace(modeStr) && Enum.TryParse(modeStr, true, out ImportMode parsedMode))
+            {
+                mode = parsedMode;
+            }
+        }
+
+        // Optional: newInstanceName for copy mode
+        string? newInstanceName = null;
+        if (evt.Parameters.TryGetValue("newInstanceName", out var newInstanceNameObj) &&
+            newInstanceNameObj is System.Text.Json.JsonElement newInstanceNameElem &&
+            newInstanceNameElem.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            newInstanceName = newInstanceNameElem.GetString();
+        }
+
+        try
+        {
+            // Call coordinator for orchestration
+            var export = coordinator.ImportInstance(archiveUri, mode, newInstanceName);
+
+            return new
+            {
+                status = "imported",
+                archive = new
+                {
+                    path = export.ArchiveUri,
+                    name = export.ArchiveName,
+                    createdDate = export.CreatedDate,
+                    updatedDate = export.UpdatedDate,
+                    instanceName = export.InstanceName,
+                    instanceId = export.InstanceId
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, $"Import failed: {ex.Message}"),
+                token);
+            return null;
+        }
+    }
+
     private static string? GetStringParam(object? obj)
     {
         return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
@@ -477,6 +558,7 @@ public class VmHandler(
                 },
                 new Dictionary<string, string> { ["action"] = "delete", ["description"] = "Deletes a VM by id and removes all associated data." },
                 new Dictionary<string, string> { ["action"] = "export", ["description"] = "Exports a VM and all artifacts as a .zip archive. Parameter: id = VM GUID." },
+                new Dictionary<string, string> { ["action"] = "import", ["description"] = "Imports a VM from an exported archive. Parameters: archive (required), mode (copy|restore, optional), newInstanceName (required for copy)" },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]

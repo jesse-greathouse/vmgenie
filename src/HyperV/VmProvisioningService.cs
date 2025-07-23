@@ -3,16 +3,20 @@ using System.IO;
 
 using Microsoft.Extensions.Logging;
 
+using VmGenie.Artifacts;
+
 namespace VmGenie.HyperV;
 
 public class VmProvisioningService(
     VmHelper vmHelper,
     VhdxManager vhdxManager,
+    VmLifecycleService vmLifecycleService,
     ILogger<VmProvisioningService> logger,
     Config config)
 {
     private readonly VmHelper _vmHelper = vmHelper ?? throw new ArgumentNullException(nameof(vmHelper));
     private readonly VhdxManager _vhdxManager = vhdxManager ?? throw new ArgumentNullException(nameof(vhdxManager));
+    private readonly VmLifecycleService _vmLifecycleService = vmLifecycleService ?? throw new ArgumentNullException(nameof(vmLifecycleService));
     private readonly ILogger<VmProvisioningService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
 
@@ -101,6 +105,78 @@ Export-VM -Name '{instanceName}' -Path '{destinationFolder}'| Out-Null
         }
     }
 
+    /// <summary>
+    /// Imports a VM using Hyper-V's Import-VM, either as a restore (same ID) or copy (new ID).
+    /// - export: The Export metadata object (source of instance name, etc).
+    /// - location: The path to the folder in tmp/ where the exported artifacts are staged.
+    /// - copy: If true, perform a copy (new VM ID). If false, perform a restore (preserve VM ID).
+    /// Returns the imported Vm object.
+    /// </summary>
+    public Vm ImportVm(Export export, string location, bool copy = false)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+        if (string.IsNullOrWhiteSpace(location))
+            throw new ArgumentNullException(nameof(location));
+        if (!Directory.Exists(location))
+            throw new DirectoryNotFoundException($"Import location not found: {location}");
+
+        _logger.LogInformation(
+            "Beginning VM import: InstanceName={InstanceName}, ImportLocation={Location}, Mode={Mode}",
+            export.InstanceName, location, copy ? "Copy (new ID)" : "Restore (existing ID)");
+
+        // Defensive: If VM with same name exists and we're not copying, enforce safety checks before deletion
+        if (!copy)
+        {
+            var existingVm = _vmHelper.GetVmByName(export.InstanceName);
+            if (existingVm != null)
+            {
+                if (VmLifecycleService.IsRunning(existingVm.Id))
+                {
+                    throw new InvalidOperationException($"Refusing to restore: VM '{export.InstanceName}' [{existingVm.Id}] is currently running. Please shut down the VM before restoring.");
+                }
+
+                _logger.LogWarning("Deleting existing .vhdx virtual hard drive for '{InstanceName}'", export.InstanceName);
+                _vhdxManager.DeleteVhdx(existingVm.Id);
+
+                _logger.LogWarning("VM with name '{InstanceName}' already exists and is not running. Deleting before restore...", export.InstanceName);
+                _vmLifecycleService.Delete(existingVm.Id, force: true);
+            }
+        }
+
+        string vmcxFile = Path.Combine(location, "Virtual Machines", $"{export.InstanceId}.vmcx");
+        if (!File.Exists(vmcxFile))
+            throw new FileNotFoundException($"Could not find vmcx file at {vmcxFile}");
+
+        // Pass the extracted folder (with Virtual Machines, etc) as the path
+        string importModeArgs = copy
+            ? "-Copy -GenerateNewId"
+            : "-Copy -GenerateNewId:$false";
+        string cmd = $@"
+Import-VM -Path '{vmcxFile}' {importModeArgs} | Out-Null
+";
+
+        try
+        {
+            RunPowershellCommand("Import-VM", cmd);
+
+            var importedVm = _vmHelper.GetVmByName(export.InstanceName)
+                ?? throw new InvalidOperationException($"VM import succeeded but VM '{export.InstanceName}' not found in Hyper-V.");
+
+            _logger.LogInformation(
+                "VM import completed successfully: {InstanceName} (Mode: {Mode})",
+                export.InstanceName, copy ? "Copy" : "Restore");
+
+            return importedVm;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to import VM '{InstanceName}' from '{Location}'.",
+                export.InstanceName, location);
+            throw;
+        }
+    }
 
     private void EnsureVmDoesNotExist(string instanceName)
     {

@@ -4,15 +4,15 @@
 # .NET 8.0 is expected and validated by the bootstrap script already.
 
 # Constants
-$ServiceName      = "VmGenie"
-$DisplayName      = "VmGenie Service"
-$PublishConfig    = "Release"
-$Runtime          = "win-x64"
-$ProjectPath      = Resolve-Path "$PSScriptRoot\..\..\src\vmgenie.csproj"
+$ServiceName = "VmGenie"
+$DisplayName = "VmGenie Service"
+$PublishConfig = "Release"
+$Runtime = "win-x64"
+$ProjectPath = Resolve-Path "$PSScriptRoot\..\..\src\vmgenie.csproj"
 $ServiceTargetDir = "C:\Program Files\VmGenie\Service"
 
 function Build-VmGenieService {
-<#
+    <#
 .SYNOPSIS
 Publishes the VmGenie service to the publish directory.
 #>
@@ -37,7 +37,7 @@ Publishes the VmGenie service to the publish directory.
 }
 
 function Install-VmGenieService {
-<#
+    <#
 .SYNOPSIS
 Installs the VmGenie service with Windows Service Control Manager.
 #>
@@ -70,7 +70,7 @@ Installs the VmGenie service with Windows Service Control Manager.
 }
 
 function Start-VmGenieService {
-<#
+    <#
 .SYNOPSIS
 Starts the VmGenie service.
 #>
@@ -80,7 +80,7 @@ Starts the VmGenie service.
 }
 
 function Stop-VmGenieService {
-<#
+    <#
 .SYNOPSIS
 Stops the VmGenie service.
 #>
@@ -90,7 +90,7 @@ Stops the VmGenie service.
 }
 
 function Restart-VmGenieService {
-<#
+    <#
 .SYNOPSIS
 Restarts the VmGenie service.
 #>
@@ -99,7 +99,7 @@ Restarts the VmGenie service.
 }
 
 function Test-VmGenieStatus {
-<#
+    <#
 .SYNOPSIS
 Queries the VmGenie Service via the "status" command and returns $true if it responds OK.
 #>
@@ -124,7 +124,7 @@ Queries the VmGenie Service via the "status" command and returns $true if it res
             }
 
             Complete-Request -Id $Response.id
-        }
+        } -TimeoutSeconds 3 | Out-Null
     }
     catch {
         # swallow connection errors silently — service is likely down

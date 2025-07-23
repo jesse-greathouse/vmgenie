@@ -123,6 +123,20 @@ function Resume-VMInstance {
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Running -DisplayName $DisplayName
 }
 
+function Stop-VMInstanceGracefully {
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName
+    )
+
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
+
+    Send-VmLifecycleEvent -Action 'shutdown' -InstanceId $guid -DisplayName $DisplayName
+    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
+}
+
 function Remove-VMInstance {
     <#
     .SYNOPSIS
@@ -179,6 +193,147 @@ function Remove-VMInstance {
     }
 
     Write-Host "[✅] VM '$DisplayName' [$guid] deleted successfully." -ForegroundColor Green
+}
+
+function Import-VMInstance {
+    <#
+    .SYNOPSIS
+        Import a VM instance from an archive, supporting both copy and restore.
+    .PARAMETER InstanceName
+        (Optional) Name of the VM instance whose archives to consider for import.
+        If omitted, prompts for selection.
+    .PARAMETER Mode
+        'copy' for new instance, 'restore' for backup restore (default: 'restore').
+    .PARAMETER NewInstanceName
+        Required if Mode is 'copy'. Name for the new VM instance.
+    .EXAMPLE
+        Import-VMInstance -InstanceName 'test1' -Mode copy -NewInstanceName 'myclone'
+    #>
+    [CmdletBinding()]
+    param (
+        [string] $InstanceName,
+        [ValidateSet('restore', 'copy')]
+        [string] $Mode = 'restore',
+        [string] $NewInstanceName
+    )
+
+    # INSTANCE SELECTION
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $DisplayName = $resolved.DisplayName
+
+    # ARCHIVE SELECTION — Only show archives for this instance
+    $archive = Invoke-ExportArchivePrompt -InstanceName $DisplayName
+    if (-not $archive) {
+        throw "[❌] No exported archives found for instance '$DisplayName'."
+    }
+    $ArchiveName = $archive.archiveName
+    $ArchivePath = $archive.archiveUri      # CORRECT PROPERTY!
+    $OriginalInstanceName = $archive.instanceName
+
+    # CHOOSE MODE
+    if (-not $PSBoundParameters.ContainsKey('Mode')) {
+        $Mode = Invoke-ImportModePrompt  # Defaults to 'restore'
+    }
+
+    # 4. GET NEW INSTANCE NAME (if copy)
+    if ($Mode -eq 'copy' -and -not $NewInstanceName) {
+        $NewInstanceName = Invoke-InstancePrompt -Label 'Enter New Instance Name'
+        if (-not $NewInstanceName) {
+            throw "[❌] Copy mode requires a new instance name."
+        }
+    }
+
+    $wasShutDown = $false
+
+    if ($Mode -eq 'restore') {
+        # --- Check if VM is running (use state-check logic as in Export-VMInstance) ---
+        $isProvisioned = Test-IsProvisioned -InstanceName $OriginalInstanceName
+        if ($isProvisioned) {
+            $guid = Resolve-VMInstanceId -InstanceName $OriginalInstanceName
+
+            $script:StateResult = $null
+            $script:StateError = $null
+
+            $parameters = @{
+                action = 'state-check'
+                id     = $guid
+                state  = $script:VmState_Running
+            }
+            Send-Event -Command 'vm' -Parameters $parameters -Handler {
+                param ($Response)
+                if ($Response.status -ne 'ok') {
+                    $script:StateError = $Response.data
+                }
+                else {
+                    $script:StateResult = $Response.data
+                }
+                Complete-Request -Id $Response.id
+            } | Out-Null
+
+            if ($script:StateError) {
+                throw "[❌] Service error during state-check: $script:StateError"
+            }
+
+            $isRunning = $script:StateResult.matches
+            $currentState = $script:StateResult.currentState
+            $currentStateName = Get-StateName -State $currentState
+
+            if ($isRunning) {
+                $doShutdown = [Sharprompt.Prompt]::Confirm(
+                    "Instance '$OriginalInstanceName' is currently *running* (state: $currentStateName). Shut down before restore?"
+                )
+                if (-not $doShutdown) {
+                    throw "[❌] Cannot restore over a running VM. Import cancelled."
+                }
+                Stop-VMInstanceGracefully -InstanceName $OriginalInstanceName
+                $wasShutDown = $true
+            }
+        }
+    }
+
+    # PERFORM IMPORT VIA SERVICE
+    $parameters = @{
+        action  = 'import'
+        archive = $ArchivePath    # **this must be a non-null string**
+        mode    = $Mode
+    }
+    if ($Mode -eq 'copy') {
+        $parameters['newInstanceName'] = $NewInstanceName  # Service expects newInstanceName
+    }
+
+    $script:ImportError = $null
+    $script:ImportResult = $null
+
+    Write-Host "[⚙ ] Importing archive $ArchiveName …" -ForegroundColor Yellow
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:ImportError = $Response.data
+        }
+        else {
+            $script:ImportResult = $Response.data
+        }
+        Complete-Request -Id $Response.id
+    } -TimeoutSeconds 300 | Out-Null
+
+    if ($script:ImportError) {
+        throw "[❌] Import failed: $script:ImportError"
+    }
+
+    Write-Host "[✅] Import completed: $ArchiveName ($Mode mode)" -ForegroundColor Green
+
+    # Offer to start/connect imported VM if relevant
+    $importedName = if ($Mode -eq 'copy') { $NewInstanceName } else { $OriginalInstanceName }
+    if ($wasShutDown -or $Mode -eq 'copy') {
+        $connect = [Sharprompt.Prompt]::Confirm(
+            "Import complete. Would you like to start and connect to '$importedName' now?"
+        )
+        if ($connect) {
+            Start-VMInstance -InstanceName $importedName
+            Connect-VMInstance -InstanceName $importedName
+        }
+    }
 }
 
 function Export-VMInstance {
@@ -303,20 +458,6 @@ function Export-VMInstance {
 
     # Optionally return the archive info as output object
     return $script:ExportResult
-}
-
-function Stop-VMInstanceGracefully {
-    [CmdletBinding()]
-    param (
-        [string] $InstanceName
-    )
-
-    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
-    $guid = $resolved.Guid
-    $DisplayName = $resolved.DisplayName
-
-    Send-VmLifecycleEvent -Action 'shutdown' -InstanceId $guid -DisplayName $DisplayName
-    Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
 }
 
 function Send-VmLifecycleEvent {
@@ -1198,6 +1339,7 @@ Export-ModuleMember -Function `
     Resume-VMInstance, `
     Stop-VMInstanceGracefully, `
     Remove-VMInstance, `
+    Import-VMInstance, `
     Export-VMInstance, `
     Connect-VMInstance, `
     Invoke-ProvisionVm, `

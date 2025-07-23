@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,9 +13,10 @@ namespace VmGenie.EventHandlers;
 /// Handles the creation of seed artifacts for the cloud-init API.
 /// Supported actions: create, help.
 /// </summary>
-public class ArtifactHandler(Config config) : IEventHandler
+public class ArtifactHandler(Config config, ExportRepository exportRepo) : IEventHandler
 {
     private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly ExportRepository _exportRepo = exportRepo ?? throw new ArgumentNullException(nameof(exportRepo));
     public async Task HandleAsync(Event evt, IWorkerContext ctx, CancellationToken token)
     {
         var action = GetAction(evt);
@@ -22,6 +24,7 @@ public class ArtifactHandler(Config config) : IEventHandler
         object? data = action switch
         {
             "create" => await HandleCreateAsync(evt, ctx, token),
+            "exports" => HandleExports(evt, _exportRepo),
             "help" or _ => HandleHelp()
         };
 
@@ -95,6 +98,54 @@ public class ArtifactHandler(Config config) : IEventHandler
             await ctx.SendResponseAsync(EventResponse.Error(evt, ex.Message), token);
             return null;
         }
+    }
+
+    private static object HandleExports(Event evt, ExportRepository exportRepo)
+    {
+        // Parse optional filters
+        string? instanceName = null;
+        string? instanceId = null;
+        ExportRepository.ExportSortOrder sortOrder = ExportRepository.ExportSortOrder.FileNameAsc;
+
+        if (evt.Parameters.TryGetValue("instanceName", out var nameObj) &&
+            nameObj is JsonElement nameElem &&
+            nameElem.ValueKind == JsonValueKind.String)
+        {
+            instanceName = nameElem.GetString();
+        }
+
+        if (evt.Parameters.TryGetValue("instanceId", out var idObj) &&
+            idObj is JsonElement idElem &&
+            idElem.ValueKind == JsonValueKind.String)
+        {
+            instanceId = idElem.GetString();
+        }
+
+        if (evt.Parameters.TryGetValue("sortOrder", out var sortObj) &&
+            sortObj is JsonElement sortElem &&
+            sortElem.ValueKind == JsonValueKind.String)
+        {
+            var sortStr = sortElem.GetString();
+            if (!string.IsNullOrWhiteSpace(sortStr) &&
+                Enum.TryParse(sortStr, ignoreCase: true, out ExportRepository.ExportSortOrder parsedSort))
+            {
+                sortOrder = parsedSort;
+            }
+        }
+
+        var exports = exportRepo.GetAll(instanceName, instanceId, sortOrder)
+            .Select(e => new
+            {
+                archiveName = e.ArchiveName,
+                archiveUri = e.ArchiveUri,
+                createdDate = e.CreatedDate,
+                updatedDate = e.UpdatedDate,
+                instanceName = e.InstanceName,
+                instanceId = e.InstanceId
+            })
+            .ToList();
+
+        return new { exports };
     }
 
     private static object HandleHelp()

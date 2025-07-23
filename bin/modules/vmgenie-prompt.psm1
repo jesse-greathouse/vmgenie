@@ -603,6 +603,106 @@ function Invoke-ExportVmWhileRunningPrompt {
     }
 }
 
+function Invoke-ExportArchivePrompt {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string] $InstanceName,
+
+        [string] $Label = 'Select Export Archive to Import'
+    )
+
+    # Call the service for available exports for the given instance, sorted by newest first
+    $parameters = @{
+        action       = 'exports'
+        instanceName = $InstanceName
+        sortOrder    = 'CreatedDateDesc'
+    }
+
+    $script:ExportsResult = $null
+    $script:ExportsError = $null
+
+    $result = Send-Event -Command 'artifact' -Parameters $parameters -Handler {
+        param ($Response)
+
+        if ($Response.status -ne 'ok') {
+            $script:ExportsError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+
+        $script:ExportsResult = $Response.data.exports
+        Complete-Request -Id $Response.id
+    }
+
+    if (-not $result) {
+        throw "Failed to retrieve export archives: service did not respond or response was invalid."
+    }
+    if ($script:ExportsError) {
+        throw "Service error: $script:ExportsError"
+    }
+    if (-not $script:ExportsResult -or $script:ExportsResult.Count -eq 0) {
+        throw "No export archives found for instance '$InstanceName'."
+    }
+
+    # Prepare list for prompt: Show archive name, date, etc.
+    $exportMap = @{}
+    $displayList = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($e in $script:ExportsResult) {
+        $dateStr = Get-Date ($e.createdDate) -Format 'yyyy-MM-dd HH:mm:ss'
+        $labelStr = "$($e.archiveName)  [$dateStr]"
+        $exportMap[$labelStr] = $e
+        $displayList.Add($labelStr)
+    }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $Label
+    $options.Items = $displayList
+    $options.DefaultValue = $displayList[0]
+    $options.PageSize = [Math]::Min(12, $displayList.Count)
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+    return $exportMap[$selected]
+}
+
+function Invoke-ImportModePrompt {
+    [CmdletBinding()]
+    param (
+        [string] $Label = "Choose Import Mode",
+        [string] $Default = "restore"
+    )
+
+    $choices = [System.Collections.Generic.List[string]]::new()
+    $choices.Add("🔄 Restore — Overwrites the original VM. All existing data is lost.")
+    $choices.Add("🌱 Copy — Creates a new VM. Original VM is unchanged.")
+
+    $defaultChoice = if ($Default -eq "copy") {
+        $choices | Where-Object { $_ -like "*Copy*" }
+    }
+    else {
+        $choices | Where-Object { $_ -like "*Restore*" }
+    }
+
+    Write-Host ""
+    Write-Host "Restore:  Replace original VM with this archive (destructive)." -ForegroundColor Yellow
+    Write-Host "Copy:     Make a new VM from this archive (non-destructive)." -ForegroundColor Green
+    Write-Host ""
+
+    $options = [Sharprompt.SelectOptions[string]]::new()
+    $options.Message = $Label
+    $options.Items = $choices
+    $options.DefaultValue = $defaultChoice
+    $options.PageSize = $choices.Count
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+
+    if ($selected -like "*Restore*") { return "restore" }
+    if ($selected -like "*Copy*") { return "copy" }
+    throw "Unrecognized import mode selection."
+}
+
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -616,4 +716,6 @@ Export-ModuleMember -Function `
     Invoke-VmSwitchPrompt, `
     Invoke-MergeAvhdxPrompt, `
     Invoke-CreateVmConfirmPrompt, `
-    Invoke-ExportVmWhileRunningPrompt
+    Invoke-ExportVmWhileRunningPrompt, `
+    Invoke-ExportArchivePrompt, `
+    Invoke-ImportModePrompt

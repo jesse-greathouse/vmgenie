@@ -11,6 +11,9 @@
 src/obj
 src/bin
 
+# temporary files
+tmp/
+
 # runtime-generated files
 var/
 seed.iso
