@@ -9,10 +9,12 @@ users:
     groups: sudo
     ssh-authorized-keys:
       - {{ PRIVKEY }}
+ssh_pwauth: false
+disable_root: true
 timezone: {{ TIMEZONE }}
 locale: {{ LOCALE }}
 keyboard:
   layout: {{ LAYOUT }}
 runcmd:
-  - apt update -y
-  - apt upgrade -y
+  - zypper --non-interactive refresh
+  - zypper --non-interactive update

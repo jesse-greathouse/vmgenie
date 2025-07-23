@@ -9,6 +9,8 @@ users:
     groups: sudo
     ssh-authorized-keys:
       - {{ PRIVKEY }}
+ssh_pwauth: false
+disable_root: true
 timezone: {{ TIMEZONE }}
 locale: {{ LOCALE }}
 keyboard:

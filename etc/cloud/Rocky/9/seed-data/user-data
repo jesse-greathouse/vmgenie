@@ -6,13 +6,15 @@ users:
     shell: /bin/bash
     home: /home/{{ USERNAME }}
     lock_passwd: true
-    groups: sudo
+    groups: sudo, wheel
     ssh-authorized-keys:
       - {{ PRIVKEY }}
+ssh_pwauth: false
+disable_root: true
 timezone: {{ TIMEZONE }}
 locale: {{ LOCALE }}
 keyboard:
   layout: {{ LAYOUT }}
 runcmd:
-  - apt update -y
-  - apt upgrade -y
+  - dnf -y update
+  - dnf -y upgrade
