@@ -792,7 +792,7 @@ function Publish-VmArtifact {
     }
 
     # capture VM switch
-    $vmSwitchObj = Invoke-VmSwitchPrompt -value $cfg.VM_SWITCH
+    $vmSwitchObj = Invoke-VmSwitchPrompt -default $cfg.VM_SWITCH
     Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
 
     $hostname = Invoke-HostnamePrompt  -value $instance
