@@ -97,6 +97,10 @@ public class VmHandler(
                 data = HandleNetAddress(evt);
                 break;
 
+            case "swap-iso":
+                data = HandleSwapIso(evt, _provisioner);
+                break;
+
             default:
                 await ctx.SendResponseAsync(
                     EventResponse.Error(evt, $"Unknown action: '{action}'. Valid actions are: list, details, help."),
@@ -519,6 +523,40 @@ public class VmHandler(
         }
     }
 
+    private static object? HandleSwapIso(Event evt, VmProvisioningService provisioner)
+    {
+        // Expect "id" (VM GUID or instanceId) and "isoPath"
+        if (!evt.Parameters.TryGetValue("id", out var idObj) ||
+            idObj is not System.Text.Json.JsonElement idElem ||
+            idElem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'id' parameter for swap-iso action.");
+        }
+
+        var vmId = idElem.GetString();
+        if (string.IsNullOrWhiteSpace(vmId))
+        {
+            throw new ArgumentException("'id' parameter cannot be empty.");
+        }
+
+        if (!evt.Parameters.TryGetValue("isoPath", out var isoPathObj) ||
+            isoPathObj is not System.Text.Json.JsonElement isoPathElem ||
+            isoPathElem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            throw new ArgumentException("Missing or invalid 'isoPath' parameter for swap-iso action.");
+        }
+
+        var isoPath = isoPathElem.GetString();
+        if (string.IsNullOrWhiteSpace(isoPath))
+        {
+            throw new ArgumentException("'isoPath' parameter cannot be empty.");
+        }
+
+        provisioner.SwapIso(vmId, isoPath);
+
+        return new { id = vmId, isoPath, status = "swapped" };
+    }
+
     private static string? GetStringParam(object? obj)
     {
         return obj is System.Text.Json.JsonElement elem && elem.ValueKind == System.Text.Json.JsonValueKind.String ? elem.GetString() : null;
@@ -559,6 +597,10 @@ public class VmHandler(
                 new Dictionary<string, string> { ["action"] = "delete", ["description"] = "Deletes a VM by id and removes all associated data." },
                 new Dictionary<string, string> { ["action"] = "export", ["description"] = "Exports a VM and all artifacts as a .zip archive. Parameter: id = VM GUID." },
                 new Dictionary<string, string> { ["action"] = "import", ["description"] = "Imports a VM from an exported archive. Parameters: archive (required), mode (copy|restore, optional), newInstanceName (required for copy)" },
+                new Dictionary<string, string> {
+                    ["action"] = "swap-iso",
+                    ["description"] = "Swaps the attached ISO for a running/stopped VM. Parameters: id = VM GUID, isoPath = path to new ISO."
+                },
                 new Dictionary<string, string> { ["action"] = "help", ["description"] = "Displays this help message." }
             },
             ["exampleRequests"] = new[]

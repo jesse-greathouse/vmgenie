@@ -795,7 +795,7 @@ function Publish-VmArtifact {
     $vmSwitchObj = Invoke-VmSwitchPrompt -value $cfg.VM_SWITCH
     Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
 
-    $hostname = Invoke-HostnamePrompt -value $instance
+    $hostname = Invoke-HostnamePrompt  -value $instance
     $username = Invoke-UsernamePrompt  -value $cfg.USERNAME
     $timezone = Invoke-TimezonePrompt  -value $cfg.TIMEZONE
     $layout = Invoke-LayoutPrompt      -value $cfg.LAYOUT
@@ -865,6 +865,149 @@ function Publish-VmArtifact {
     Publish-SeedIso -InstanceName $instance
 
     Write-Host "[✅] VM artifact created successfully in: $artifactDir" -ForegroundColor Green
+}
+
+## TODO: Rotate Pivate keys
+## Rotating keys is something that can't currently be supported.
+## cloud-init only updates ~/.ssh/authorized_keys on the first boot of an instance.
+## Changing the keys after the first boot will result in the user being locked out of the instance.
+## I'd like to find a way to programmatically rotate the keys in the instance, but for now its a non starter.
+## Keeping this code here in case I figure out how to do it later, but for now its not supported.
+function Update-VmInstancePrivKey {
+    <#
+    .SYNOPSIS
+    Rotates the SSH keypair for a VM Instance, updates metadata, and recreates seed ISO.
+    .DESCRIPTION
+    Generates a new SSH private/public key pair for an existing VM Instance artifact.
+    Updates the public key in metadata.yml and recreates the seed ISO.
+    Also ensures the new ISO is attached to the VM (if provisioned).
+    Does NOT overwrite other configuration or artifact data.
+    #>
+    [CmdletBinding()]
+    param (
+        [string]$InstanceName
+    )
+
+    # Resolve instance selection
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    if (-not $resolved) { throw "[FATAL] Could not resolve VM instance selection." }
+    $InstanceName = $resolved.DisplayName
+
+    # Locate artifact directory
+    $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+    $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$InstanceName"
+
+    # Sanity check artifact exists
+    if (-not (Test-Path $artifactDir)) {
+        throw "[FATAL] Artifact directory does not exist: $artifactDir"
+    }
+
+    # Remove old keys and seed ISO (if present)
+    $keyFiles = @(
+        Join-Path $artifactDir "$InstanceName.pem"
+        Join-Path $artifactDir "$InstanceName.pem.pub"
+        Join-Path $artifactDir "seed.iso"
+    )
+    foreach ($file in $keyFiles) {
+        if (Test-Path $file) {
+            Remove-Item -Path $file -Recurse -Force
+        }
+    }
+
+    # Generate new SSH keypair
+    Add-Key -Name $InstanceName -OutputDirectory $artifactDir
+
+    # Read public key from .pem.pub file
+    $pubKeyPath = Join-Path $artifactDir "$InstanceName.pem.pub"
+    $pubKey = (Get-Content -Raw -Path $pubKeyPath).Trim()
+
+    # Read username from metadata.yml
+    $metadataPath = Join-Path $artifactDir "metadata.yml"
+    $metadataYaml = Get-Content -Raw -Path $metadataPath
+    $metadataBuilder = New-Object YamlDotNet.Serialization.DeserializerBuilder
+    $metadataDeserializer = $metadataBuilder.Build()
+    $metadataReader = New-Object System.IO.StringReader($metadataYaml)
+    $metadata = $metadataDeserializer.Deserialize($metadataReader, [System.Collections.Generic.Dictionary[string, object]])
+
+    if ($null -eq $metadata) { throw "[FATAL] Failed to parse metadata.yml" }
+    if (-not $metadata.ContainsKey('username')) {
+        throw "[FATAL] No username field in metadata.yml"
+    }
+    $username = $metadata['username']
+
+    # Update public key in user-data YAML for that user
+    $userDataPath = Join-Path $artifactDir "seed-data/user-data"
+    if (-not (Test-Path $userDataPath)) {
+        throw "[FATAL] user-data not found: $userDataPath"
+    }
+    $userDataYaml = Get-Content -Raw -Path $userDataPath
+
+    $userDataBuilder = New-Object YamlDotNet.Serialization.DeserializerBuilder
+    $userDataDeserializer = $userDataBuilder.Build()
+    $userDataReader = New-Object System.IO.StringReader($userDataYaml)
+    $userData = $userDataDeserializer.Deserialize($userDataReader)
+
+    # Find user by name
+    $targetUser = $null
+    if ($userData.ContainsKey('users')) {
+        foreach ($user in $userData['users']) {
+            if ($user['name'] -eq $username) {
+                $targetUser = $user
+                break
+            }
+        }
+    }
+
+    if ($null -eq $targetUser) {
+        throw "[FATAL] Could not find user '$username' in user-data YAML."
+    }
+
+    if ($targetUser.PSObject.Properties.Match('ssh-authorized-keys')) {
+        # If it's null or not an array, replace with an array containing the key
+        if ($null -eq $targetUser['ssh-authorized-keys'] -or
+            -not ($targetUser['ssh-authorized-keys'] -is [System.Collections.IList])) {
+            $targetUser['ssh-authorized-keys'] = @($pubKey)
+        }
+        else {
+            $targetUser['ssh-authorized-keys'][0] = $pubKey
+        }
+    }
+
+    # Re-insert the updated user into the users array
+    for ($i = 0; $i -lt $userData['users'].Count; $i++) {
+        if ($userData['users'][$i]['name'] -eq $username) {
+            $userData['users'][$i] = $targetUser
+        }
+    }
+
+    # Serialize back to YAML
+    $userDataSerializerBuilder = New-Object YamlDotNet.Serialization.SerializerBuilder
+    $userDataSerializer = $userDataSerializerBuilder.Build()
+    $userDataWriter = New-Object System.IO.StringWriter
+    $userDataSerializer.Serialize($userDataWriter, $userData)
+    $userDataWriter.Flush()
+    $newUserDataYaml = $userDataWriter.ToString()
+    Set-Content -Path $userDataPath -Value $newUserDataYaml -Encoding UTF8
+
+    # Re-create seed ISO
+    Publish-SeedIso -InstanceName $InstanceName
+
+    # Swap ISO in provisioned VM (if provisioned)
+    $isProvisioned = Test-IsProvisioned -InstanceName $InstanceName
+    if ($isProvisioned) {
+        try {
+            Update-VMInstanceIso -InstanceName $InstanceName
+            Write-Host "[✅] New seed ISO attached to running VM: $InstanceName" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "[⚠️] Warning: Failed to attach new ISO to VM. You may need to reattach manually. Error: $_" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host "[✅] SSH keypair rotated and seed ISO updated for instance: $InstanceName" -ForegroundColor Green
+    Write-Host "    - New keys: $InstanceName.pem, $InstanceName.pem.pub"
+    Write-Host "    - metadata.yml updated with new public key"
+    Write-Host "    - seed-iso regenerated"
 }
 
 function Invoke-ProvisionVm {
@@ -1029,6 +1172,76 @@ Publish-SeedIso -InstanceName test5
     }
 
     return $isoPath
+}
+
+function Update-VMInstanceIso {
+    <#
+    .SYNOPSIS
+    Swaps the attached ISO on a VM instance with a new ISO.
+    .DESCRIPTION
+    Sends an event to the `vm` command with `action = swap-iso`, instructing the VmGenie backend to detach any existing ISO and attach a new one.
+    .PARAMETER InstanceName
+    The name or GUID of the VM instance.
+    .PARAMETER IsoPath
+    The full path to the new ISO file to attach.
+    .EXAMPLE
+    Swap-VMInstanceIso -InstanceName test1 -IsoPath C:\Users\jessegreathouse\vmgenie\var\cloud\test1\seed.iso
+    #>
+    [CmdletBinding()]
+    param(
+        [string] $InstanceName,
+        [string] $IsoPath
+    )
+
+    # Prompt for instance if not given
+    $resolved = Resolve-VMInstanceSelection -InstanceName $InstanceName
+    $guid = $resolved.Guid
+    $DisplayName = $resolved.DisplayName
+
+    # Default ISO path if not given: use cloud/<InstanceName>/seed.iso
+    if (-not $IsoPath) {
+        $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
+        $defaultIso = Join-Path $repoRoot "var/cloud/$DisplayName/seed.iso"
+        if (Test-Path $defaultIso) {
+            $IsoPath = $defaultIso
+        }
+        else {
+            $IsoPath = Read-Host "Enter path to ISO to attach"
+        }
+    }
+
+    if (-not (Test-Path $IsoPath)) {
+        throw "[❌] ISO file not found: $IsoPath"
+    }
+
+    Write-Host "[⚙ ] Swapping ISO for $DisplayName..." -ForegroundColor Yellow
+
+    $script:SwapIsoError = $null
+    $script:SwapIsoResult = $null
+
+    $parameters = @{
+        action  = 'swap-iso'
+        id      = $guid
+        isoPath = $IsoPath
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:SwapIsoError = $Response.data
+        }
+        else {
+            $script:SwapIsoResult = $Response.data
+        }
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:SwapIsoError) {
+        throw "[❌] Swap-ISO failed: $script:SwapIsoError"
+    }
+
+    Write-Host "[✅] ISO swapped for $DisplayName - $IsoPath" -ForegroundColor Green
+    return $script:SwapIsoResult
 }
 
 function Copy-Vhdx {
@@ -1345,6 +1558,7 @@ Export-ModuleMember -Function `
     Invoke-ProvisionVm, `
     Publish-VmArtifact, `
     Publish-SeedIso, `
+    Update-VMInstanceIso, `
     Copy-Vhdx, `
     Get-IsDifferencingDisk, `
     ConvertTo-Boolean, `
