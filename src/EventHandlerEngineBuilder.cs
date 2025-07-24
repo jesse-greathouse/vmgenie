@@ -35,6 +35,7 @@ public static class EventHandlerEngineBuilder
         engine.Register("vm-switch", new VmSwitchHandler(vmSwitchRepo));
         engine.Register("artifact", new ArtifactHandler(config, exportRepo));
         engine.Register("vhdx", new VhdxHandler(vhdxManager));
+        engine.Register("help", new HelpHandler());
 
         engine.Freeze();
 

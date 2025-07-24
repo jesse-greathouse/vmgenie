@@ -4,10 +4,10 @@ using namespace System.Text
 using namespace System.Text.Json
 
 # Global state
-$script:WaitingRequests   = @{}   # [id] -> Request object
+$script:WaitingRequests = @{}   # [id] -> Request object
 $script:CompletedRequests = @{}   # [id] -> Request object
-$script:ErroredRequests   = @{}   # [id] -> Request object
-$script:TimedOutRequests  = @{}   # [id] -> Request object
+$script:ErroredRequests = @{}   # [id] -> Request object
+$script:TimedOutRequests = @{}   # [id] -> Request object
 
 function New-UniqueId {
     return [Guid]::NewGuid().ToString()
@@ -40,10 +40,10 @@ function Send-Event {
 
     # Register Request object
     $script:WaitingRequests[$id] = @{
-        handler   = $Handler
-        timeout   = $TimeoutSeconds
-        progress  = 0.0
-        response  = '{}'
+        handler  = $Handler
+        timeout  = $TimeoutSeconds
+        progress = 0.0
+        response = '{}'
     }
 
     $pipe = $null
@@ -80,7 +80,8 @@ function Send-Event {
             }
         }
 
-    } finally {
+    }
+    finally {
         if ($pipe) { $pipe.Dispose() }
     }
 
@@ -106,7 +107,8 @@ function Invoke-HandleResponse {
 
         & $script:WaitingRequests[$id].handler -Response $response
 
-    } catch {
+    }
+    catch {
         Write-Warning "Failed to handle response: $_"
     }
 }
@@ -152,7 +154,7 @@ function Set-RequestProgress {
         [string] $Id,
 
         [Parameter(Mandatory)]
-        [ValidateRange(0,1)]
+        [ValidateRange(0, 1)]
         [double] $Progress
     )
 
@@ -174,4 +176,6 @@ Export-ModuleMember -Function `
     Set-RequestProgress, `
     Test-AllCompleted, `
     Get-ErroredRequests, `
-    Get-TimedOutRequests
+    Get-TimedOutRequests, `
+    Show-GenieHelp, `
+    Show-GenieCmdHelp

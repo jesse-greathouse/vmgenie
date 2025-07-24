@@ -12,13 +12,12 @@ namespace VmGenie.HyperV;
 public class VmRepository
 {
     private readonly CimSession _session;
-
     private readonly ILogger<VmRepository> _logger;
-
     private readonly InstanceRepository _instanceRepo;
+    private readonly VmNetAddressRepository _netAddressRepo;
     private readonly Dictionary<string, Instance> _artifactInstances = new(StringComparer.OrdinalIgnoreCase);
 
-    public VmRepository(ILogger<VmRepository> logger, InstanceRepository instanceRepo)
+    public VmRepository(ILogger<VmRepository> logger, InstanceRepository instanceRepo, VmNetAddressRepository netAddressRepo)
     {
         var options = new DComSessionOptions
         {
@@ -28,6 +27,7 @@ public class VmRepository
         _session = CimSession.Create(null, options);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _instanceRepo = instanceRepo ?? throw new ArgumentNullException(nameof(instanceRepo));
+        _netAddressRepo = netAddressRepo ?? throw new ArgumentNullException(nameof(netAddressRepo));
 
         _logger.LogInformation("VmRepository initialized with DCOM session.");
     }
@@ -41,7 +41,8 @@ public class VmRepository
 
     public List<Vm> GetAll(
         ProvisionedFilter provisionedFilter = ProvisionedFilter.All,
-        VmState? stateFilter = null)
+        VmState? stateFilter = null,
+        bool includeNetAddress = false)
     {
         var vms = new List<Vm>();
         var whereClause = "Caption = 'Virtual Machine'";
@@ -74,14 +75,39 @@ public class VmRepository
             var artifactInstance = GetArtifactInstance(
                 system.CimInstanceProperties["ElementName"].Value?.ToString() ?? string.Empty);
 
-            var vm = Vm.FromCimInstance(_session, system, includeHostResourcePath: false, artifactInstance: artifactInstance);
+            Dictionary<VmNetAddressRepository.AddressType, List<string>>? netAddresses = null;
+
+            if (includeNetAddress)
+            {
+                // Defensive: system.CimInstanceProperties["Name"] is the GUID
+                var vmId = system.CimInstanceProperties["Name"].Value?.ToString();
+                if (!string.IsNullOrEmpty(vmId))
+                {
+                    try
+                    {
+                        netAddresses = _netAddressRepo.GetNetAddressesForVmById(vmId);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Optional: log or handle error, but do NOT fail the entire call
+                        _logger.LogWarning(ex, "Failed to resolve network addresses for VM {VmId}", vmId);
+                    }
+                }
+            }
+
+            var vm = Vm.FromCimInstance(
+                _session, system,
+                includeHostResourcePath: false,
+                artifactInstance: artifactInstance,
+                netAddresses: netAddresses // <--- new arg
+            );
             vms.Add(vm);
         }
 
         return vms;
     }
 
-    public Vm? GetById(string id)
+    public Vm? GetById(string id, bool includeNetAddress = false)
     {
         if (string.IsNullOrWhiteSpace(id))
             throw new ArgumentNullException(nameof(id));
@@ -97,7 +123,24 @@ public class VmRepository
             var artifactInstance = GetArtifactInstance(
                 system.CimInstanceProperties["ElementName"].Value?.ToString() ?? string.Empty);
 
-            return Vm.FromCimInstance(_session, system, artifactInstance: artifactInstance);
+            Dictionary<VmNetAddressRepository.AddressType, List<string>>? netAddresses = null;
+            if (includeNetAddress)
+            {
+                var vmId = system.CimInstanceProperties["Name"].Value?.ToString();
+                if (!string.IsNullOrEmpty(vmId))
+                {
+                    try
+                    {
+                        netAddresses = _netAddressRepo.GetNetAddressesForVmById(vmId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to resolve network addresses for VM {VmId}", vmId);
+                    }
+                }
+            }
+
+            return Vm.FromCimInstance(_session, system, artifactInstance: artifactInstance, netAddresses: netAddresses);
         }
 
         return null;

@@ -9,9 +9,8 @@ using Microsoft.Extensions.Logging;
 
 namespace VmGenie.HyperV;
 
-public class VmNetAddressRepository(ILogger<VmNetAddressRepository> logger, VmHelper vmHelper)
+public class VmNetAddressRepository(ILogger<VmNetAddressRepository> logger)
 {
-    private readonly VmHelper _vmHelper = vmHelper ?? throw new ArgumentNullException(nameof(vmHelper));
     private readonly ILogger<VmNetAddressRepository> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
@@ -50,9 +49,7 @@ public class VmNetAddressRepository(ILogger<VmNetAddressRepository> logger, VmHe
         if (string.IsNullOrWhiteSpace(vmId))
             throw new ArgumentNullException(nameof(vmId));
 
-        // Use VmHelper to resolve VMName
-        var vm = _vmHelper.GetVm(vmId);
-        string vmName = vm.Name;
+        string vmName = LookupVmNameById(vmId);
 
         _logger.LogDebug("Resolved VM Id {VmId} to Name '{VmName}'.", vmId, vmName);
 
@@ -121,6 +118,31 @@ $ip # may be empty, and that’s OK
             return AddressType.IPv6Ula;
 
         return AddressType.Unknown;
+    }
+
+    private static string LookupVmNameById(string vmId)
+    {
+        if (string.IsNullOrWhiteSpace(vmId))
+            throw new ArgumentNullException(nameof(vmId));
+
+        // Open a one-off CimSession (optional: cache or DI-inject this if you prefer)
+        using var session = Microsoft.Management.Infrastructure.CimSession.Create(null);
+
+        // WQL query to fetch the VM's name by GUID
+        var systems = session.QueryInstances(
+            "root/virtualization/v2",
+            "WQL",
+            $"SELECT * FROM Msvm_ComputerSystem WHERE Name = '{vmId.Replace("'", "''")}'"
+        );
+
+        foreach (var system in systems)
+        {
+            var name = system.CimInstanceProperties["ElementName"].Value?.ToString();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+
+        throw new InvalidOperationException($"No VM found with id: {vmId}");
     }
 
     /// <summary>

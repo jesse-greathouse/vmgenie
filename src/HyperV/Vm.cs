@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Microsoft.Management.Infrastructure;
@@ -18,7 +19,8 @@ public class Vm(
     DateTime? creationTime,
     string? hostResourcePath,
     string? generation,
-    Instance? artifactInstance = null
+    Instance? artifactInstance = null,
+    Dictionary<VmNetAddressRepository.AddressType, List<string>>? netAddresses = null
 )
 {
     private const string Namespace = @"root\virtualization\v2";
@@ -34,6 +36,7 @@ public class Vm(
     public string? HostResourcePath { get; } = hostResourcePath;
     public string? Generation { get; } = generation;
     public Instance? ArtifactInstance { get; } = artifactInstance;
+    public Dictionary<VmNetAddressRepository.AddressType, List<string>>? NetAddresses { get; } = netAddresses;
 
     public override string ToString() =>
         $"{Name} [{Id}] - State: {State}, CPUs: {CpuCount}, Memory: {MemoryMb} MB, Uptime: {UptimeSeconds}s";
@@ -42,7 +45,8 @@ public class Vm(
         CimSession session,
         CimInstance system,
         bool includeHostResourcePath = true,
-        Instance? artifactInstance = null
+        Instance? artifactInstance = null,
+        Dictionary<VmNetAddressRepository.AddressType, List<string>>? netAddresses = null
     )
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -74,7 +78,7 @@ public class Vm(
                 ?? throw new InvalidOperationException($"Could not resolve VHDX path for VM '{name}' ({id}).");
         }
 
-        return new Vm(id, name, state, description, cpuCount, memoryMb, uptimeSeconds, creationTime, hostResourcePath, generation, artifactInstance);
+        return new Vm(id, name, state, description, cpuCount, memoryMb, uptimeSeconds, creationTime, hostResourcePath, generation, artifactInstance, netAddresses);
     }
 
     /// <summary>

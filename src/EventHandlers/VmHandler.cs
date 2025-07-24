@@ -241,7 +241,23 @@ public class VmHandler(
             }
         }
 
-        var vms = repository.GetAll(provisionedFilter, stateFilter);
+        bool includeNetAddress = false;
+        if (evt.Parameters.TryGetValue("includeNetAddress", out var netAddrObj) &&
+            netAddrObj is System.Text.Json.JsonElement netAddrElem)
+        {
+            if (netAddrElem.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                includeNetAddress = true;
+            }
+            else if (netAddrElem.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                // Accept "true"/"false" strings
+                if (bool.TryParse(netAddrElem.GetString(), out var parsed))
+                    includeNetAddress = parsed;
+            }
+        }
+
+        var vms = repository.GetAll(provisionedFilter, stateFilter, includeNetAddress);
 
         return new
         {
@@ -266,7 +282,25 @@ public class VmHandler(
             return null;
         }
 
-        var vm = repository.GetById(vmId);
+        // Parse includeNetAddress param
+        bool includeNetAddress = false;
+        if (evt.Parameters.TryGetValue("includeNetAddress", out var netAddrObj) &&
+            netAddrObj is System.Text.Json.JsonElement netAddrElem)
+        {
+            if (netAddrElem.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                includeNetAddress = true;
+            }
+            else if (netAddrElem.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                // Accept "true"/"false" strings
+                if (bool.TryParse(netAddrElem.GetString(), out var parsed))
+                    includeNetAddress = parsed;
+            }
+        }
+
+        // Pass through to repository
+        var vm = repository.GetById(vmId, includeNetAddress);
         if (vm is null)
         {
             error = $"No VM found with id: {vmId}";
@@ -571,11 +605,11 @@ public class VmHandler(
             {
                 new Dictionary<string, string> {
                     ["action"] = "list",
-                    ["description"] = "Lists Hyper-V virtual machines. Optional parameters: provisioned = all|exclude|only, state = numeric VmState enum value"
+                    ["description"] = "Lists Hyper-V virtual machines. Optional parameters: provisioned = all|exclude|only, state = numeric VmState enum value, includeNetAddress = true|false"
                 },
                 new Dictionary<string, string> {
                     ["action"] = "details",
-                    ["description"] = "Shows details for a specific VM by its 'id'."
+                    ["description"] = "Shows details for a specific VM by its 'id'. Optional: includeNetAddress = true|false"
                 },
                 new Dictionary<string, string> {
                     ["action"] = "provision",
@@ -607,9 +641,12 @@ public class VmHandler(
             {
                 new Dictionary<string, object> {
                     ["action"] = "list",
-                    ["parameters"] = new { action = "list", provisioned = "only", state = 2 }
+                    ["parameters"] = new { action = "list", includeNetAddress = true }
                 },
-                new Dictionary<string, object> { ["action"] = "details", ["parameters"] = new { action = "details", id = "SOME-VM-ID" } },
+                new Dictionary<string, object> {
+                    ["action"] = "details",
+                    ["parameters"] = new { action = "details", id = "SOME-VM-ID", includeNetAddress = true }
+                },
                 new Dictionary<string, object> {
                     ["action"] = "provision",
                     ["parameters"] = new { action = "provision", baseVmGuid = "BASE-VM-GUID", instanceName = "my-new-vm", vmSwitchGuid = "SWITCH-GUID", mergeDifferencingDisk = false }

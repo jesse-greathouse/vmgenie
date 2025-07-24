@@ -137,6 +137,88 @@ function Stop-VMInstanceGracefully {
     Wait-VMInstanceState -InstanceName $guid -DesiredState $script:VmState_Off -DisplayName $DisplayName
 }
 
+function Get-VMInstanceStatus {
+    <#
+    .SYNOPSIS
+        Lists all VM instances with state and primary IP address.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $script:VmResult = $null
+    $script:VmError = $null
+
+    # 1. List all provisioned VMs, with net addresses included
+    $parameters = @{
+        action            = 'list'
+        provisioned       = 'only'
+        includeNetAddress = $true
+    }
+
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:VmError = $Response.data
+            Complete-Request -Id $Response.id
+            return
+        }
+        $script:VmResult = $Response.data.vms
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:VmError) {
+        throw "[❌] Service error during list: $script:VmError"
+    }
+    if (-not $script:VmResult -or $script:VmResult.Count -eq 0) {
+        Write-Host "No VMs found."
+        return
+    }
+
+    $rows = @()
+
+    foreach ($vm in $script:VmResult) {
+        $state = $vm.State
+        $ip = ""
+        if ($vm.NetAddresses -and $vm.NetAddresses.IPv4 -and $vm.NetAddresses.IPv4.Count -gt 0) {
+            $ip = $vm.NetAddresses.IPv4[0]
+        }
+        else {
+            $ip = "(unavailable)"
+        }
+        $rows += [PSCustomObject]@{
+            Name  = $vm.Name
+            State = $state
+            IP    = $ip
+            Guid  = $vm.Id
+        }
+    }
+
+    # Column widths
+    $colName = 15
+    $colState = 10
+    $colIP = 20
+    $colGuid = 36
+
+    # Build header and underline
+    $headerFmt = "{0,-$colName} {1,-$colState} {2,-$colIP} {3,-$colGuid}"
+    $underline = ("-" * $colName) + " " + ("-" * $colState) + " " + ("-" * $colIP) + " " + ("-" * $colGuid)
+
+    # Extra space above table
+    Write-Host ''
+
+    # Print header in green
+    Write-Host ($headerFmt -f 'Name', 'State', 'IP', 'Guid') -ForegroundColor Green
+    Write-Host $underline -ForegroundColor Green
+
+    # Print data rows
+    foreach ($row in $rows) {
+        Write-Host ($headerFmt -f $row.Name, $row.State, $row.IP, $row.Guid)
+    }
+
+    # Extra space below table
+    Write-Host ''
+}
+
 function Remove-VMInstance {
     <#
     .SYNOPSIS
@@ -1551,6 +1633,7 @@ Export-ModuleMember -Function `
     Suspend-VMInstance, `
     Resume-VMInstance, `
     Stop-VMInstanceGracefully, `
+    Get-VMInstanceStatus, `
     Remove-VMInstance, `
     Import-VMInstance, `
     Export-VMInstance, `
