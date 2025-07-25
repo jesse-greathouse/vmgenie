@@ -884,7 +884,7 @@ function Publish-VmArtifact {
     $locale = Invoke-LocalePrompt      -value $cfg.LOCALE
 
     # Paths
-    $artifactDir = Join-Path -Path "var/cloud" -ChildPath $instance
+    $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$instance"
     $seedDataDir = Join-Path -Path $artifactDir -ChildPath "seed-data"
     $metadataPath = Join-Path -Path $artifactDir -ChildPath "metadata.yml"
     $pubKeyPath = Join-Path -Path $artifactDir -ChildPath ("$instance.pem.pub")

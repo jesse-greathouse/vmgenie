@@ -1,3 +1,65 @@
+function Get-GenieArgs {
+    param([string[]]$Arguments)
+
+    $action = 'help'
+    $instanceName = $null
+    $options = @{}
+
+    $argList = @($Arguments)
+
+    # Parse action (first positional, not starting with '-')
+    if ($argList.Count -ge 1 -and $argList[0] -notmatch '^-') {
+        $action = $argList[0]
+        if ($argList.Count -gt 1) {
+            $argList = $argList[1..($argList.Count - 1)]
+        }
+        else {
+            $argList = @()
+        }
+    }
+
+    # Parse instanceName (second positional, not starting with '-')
+    if ($argList.Count -ge 1 -and $argList[0] -notmatch '^-') {
+        $instanceName = $argList[0]
+        if ($argList.Count -gt 1) {
+            $argList = $argList[1..($argList.Count - 1)]
+        }
+        else {
+            $argList = @()
+        }
+    }
+
+    # Enhanced option parsing: support flags (no value after option)
+    $i = 0
+    while ($i -lt $argList.Count) {
+        $key = $argList[$i]
+        if ($key -notmatch '^-') {
+            Write-Host "Error: Option '$key' must start with '-'." -ForegroundColor Red
+            Write-Host "For usage, try: genie $action -Help" -ForegroundColor Yellow
+            exit 1
+        }
+        $optName = $key.TrimStart('-')
+
+        # Look ahead for value
+        if (($i + 1) -lt $argList.Count -and $argList[$i + 1] -notmatch '^-') {
+            $val = $argList[$i + 1]
+            $options[$optName] = $val
+            $i += 2
+        }
+        else {
+            # No value: treat as flag
+            $options[$optName] = $null
+            $i += 1
+        }
+    }
+
+    [PSCustomObject]@{
+        Action       = $action
+        InstanceName = $instanceName
+        Options      = $options
+    }
+}
+
 function Show-GenieHelp {
     <#
     .SYNOPSIS
@@ -20,12 +82,10 @@ function Show-GenieHelp {
     Write-Host "  stop           Stop a running VM instance."
     Write-Host "  pause          Pause a running VM."
     Write-Host "  resume         Resume a paused VM."
-    Write-Host "  shutdown       Gracefully shut down a VM."
     Write-Host "  delete         Delete a VM and all its data."
     Write-Host "  backup         Backup a VM to a zip archive."
     Write-Host "  restore        Restore a VM from a backup archive."
     Write-Host "  copy           Make a copy of a VM (creates a new instance)."
-    Write-Host "  import         Import a VM from an archive. (advanced)"
     Write-Host "  swap-iso       Attach a new ISO to a VM."
     Write-Host ""
     Write-Host "For help on a specific action: genie <action> help"
@@ -42,7 +102,6 @@ function Show-GenieHelp {
     Write-Host ""
 }
 
-
 function Show-GenieHelpProvision {
     <#
     .SYNOPSIS
@@ -52,18 +111,14 @@ function Show-GenieHelpProvision {
     Write-Host "provision: Create and initialize a new VM instance." -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:"
-    Write-Host "  genie provision <name> -Os <os> -Version <version> [-VmSwitch <switch>]"
+    Write-Host "  genie provision <name>"
     Write-Host ""
     Write-Host "Description:"
-    Write-Host "  Creates a new VM instance with the specified name, operating system, and version."
+    Write-Host "  Provisions a VM instance using the artifact for <name> in var/cloud/<name>."
+    Write-Host "  If the artifact does not exist, you will be guided through artifact creation."
     Write-Host ""
-    Write-Host "Options:"
-    Write-Host "  -Os             Operating system (e.g. Ubuntu, Windows) (required)"
-    Write-Host "  -Version        OS version (required)"
-    Write-Host "  -VmSwitch       (Optional) Name of the virtual switch to connect"
-    Write-Host ""
-    Write-Host "Examples:"
-    Write-Host "  genie provision mylab -Os Ubuntu -Version 24.04"
+    Write-Host "Example:"
+    Write-Host "  genie provision mylab"
     Write-Host ""
 }
 
@@ -85,21 +140,155 @@ function Show-GenieHelpStart {
     Write-Host ""
 }
 
-# ...repeat for stop, pause, resume, shutdown, etc...
+function Show-GenieHelpStop {
+    Write-Host ""
+    Write-Host "stop: Gracefully shuts down a VM, or force stops with -Force." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie stop <name> [-Force]"
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host "  -Force   Force stop the VM (equivalent to pulling the plug)."
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie stop mylab"
+    Write-Host "  genie stop mylab -Force"
+    Write-Host ""
+}
 
-# ...define more as needed...
+function Show-GenieHelpPause {
+    Write-Host ""
+    Write-Host "pause: Pause (suspend) a running VM." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie pause <name>"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie pause mylab"
+    Write-Host ""
+}
+
+function Show-GenieHelpResume {
+    Write-Host ""
+    Write-Host "resume: Resume a paused VM." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie resume <name>"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie resume mylab"
+    Write-Host ""
+}
+
+function Show-GenieHelpPs {
+    Write-Host ""
+    Write-Host "ps: List all VM instances and their current status." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie ps"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie ps"
+    Write-Host ""
+}
+
+function Show-GenieHelpConnect {
+    Write-Host ""
+    Write-Host "connect: Connect to a VM via SSH (starts it if needed)." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie connect <name>"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie connect mylab"
+    Write-Host ""
+}
+
+function Show-GenieHelpDelete {
+    Write-Host ""
+    Write-Host "delete: Delete a VM and all its data." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie delete <name>"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie delete mylab"
+    Write-Host ""
+}
+function Show-GenieHelpSwapIso {
+    Write-Host ""
+    Write-Host "swap-iso: Attach or swap the ISO for a VM." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie swap-iso <name> [-IsoPath <path>]"
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie swap-iso mylab -IsoPath C:\my\seed.iso"
+    Write-Host ""
+}
+
+function Show-GenieHelpBackup {
+    Write-Host ""
+    Write-Host "backup: Export a VM instance to a zip archive." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie backup <name>"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Creates a backup archive (zip) of the specified VM instance and all artifacts."
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie backup mylab"
+    Write-Host ""
+}
+
+function Show-GenieHelpRestore {
+    Write-Host ""
+    Write-Host "restore: Restore a VM from a backup archive." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie restore <name>"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Restores the specified VM instance from a backup archive. The VM must be stopped before restore."
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie restore mylab"
+    Write-Host ""
+}
+
+function Show-GenieHelpCopy {
+    Write-Host ""
+    Write-Host "copy: Clone a VM from an existing backup archive as a new instance." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie copy <source-instance> [-NewInstanceName <new-instance>]"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Copies the specified VM from a backup archive and provisions it as a new, separate instance."
+    Write-Host "  If -NewInstanceName is not provided, you will be prompted to enter one interactively."
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host "  -NewInstanceName   (Optional) Name for the new, cloned VM instance."
+    Write-Host ""
+    Write-Host "Example:"
+    Write-Host "  genie copy test1 -NewInstanceName test1-copy"
+    Write-Host "  genie copy test1         # prompts for new instance name"
+    Write-Host ""
+}
 
 Export-ModuleMember -Function `
+    Get-GenieArgs, `
     Show-GenieHelp, `
     Show-GenieHelpProvision, `
     Show-GenieHelpStart, `
     Show-GenieHelpStop, `
     Show-GenieHelpPause, `
     Show-GenieHelpResume, `
-    Show-GenieHelpShutdown, `
-    Show-GenieHelpStateCheck, `
-    Show-GenieHelpNetAddress, `
+    Show-GenieHelpPs, `
+    Show-GenieHelpConnect, `
     Show-GenieHelpDelete, `
-    Show-GenieHelpExport, `
-    Show-GenieHelpImport, `
+    Show-GenieHelpBackup, `
+    Show-GenieHelpRestore, `
+    Show-GenieHelpCopy, `
     Show-GenieHelpSwapIso
