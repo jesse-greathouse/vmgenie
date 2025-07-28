@@ -112,13 +112,17 @@ Debian 12 GMI (Created: 2025-07-25)
 * **Reminder:** These are build-time only. These passwords will not be used on derived cloud-init VMs.
 
 * Install OS as normal.
+* Use partitioning option to use the entire disk as one partition
+* Don't use LVM options, it's pointless when the storage device is a virtual .vhdx file
+
+> These are generalized instructions as an example of how to build the GMI. I've used a Debian based example set of what to do, but realize that your operating system will have specific ways of doing these things that may differ. I have added a section for [Operating System Specific Instructions](#operating-system-specific-instructions) to document things that are unique per operating system.
 
 ### Step 2: Update & Minimize
 
 * Install or enable sudo
 
 ```bash
-sudo apt update && sudo apt upgrade -y
+sudo apt update -y && sudo apt upgrade -y
 sudo apt autoremove -y
 sudo apt clean
 ```
@@ -158,11 +162,6 @@ systemctl status cloud-init
 
 * On a fresh install, it may show “inactive” or “exited”—that’s normal unless provisioning is happening.
 * Ensure it’s set to use DataSource `NoCloud` by default (edit `/etc/cloud/cloud.cfg.d/99-gmi.cfg` as needed)
-* Reset any previous cloud-init run:
-
-```bash
-sudo cloud-init clean --logs
-```
 
 ### Step 4: Hyper-V Integration
 
@@ -191,17 +190,29 @@ sudo apt install -y build-essential git bc flex bison libssl-dev libelf-dev
 
 # Download the linux kernel source code
 cd /usr/src
-KVER=$(uname -r)
+
+# Get the kernel version as major.minor.patch (e.g. 6.14.0)
+KVER=$(uname -r | cut -d'-' -f1)
+
+# If $KVER ends with .0, strip the .0 (e.g. 6.14.0 -> 6.14)
+if [[ "$KVER" =~ \.0$ ]]; then
+    KVER=$(echo "$KVER" | awk -F. '{print $1"."$2}')
+fi
+
+# Download, extract, and cd into the source directory
 sudo wget https://cdn.kernel.org/pub/linux/kernel/v${KVER%%.*}.x/linux-$KVER.tar.xz
 sudo tar -xf linux-$KVER.tar.xz
 cd linux-$KVER
 
 # Build the hyperV daemons
 cd tools/hv
-make
+sudo make
 
 # move the created binaries to their correct location
 sudo cp hv_kvp_daemon hv_vss_daemon hv_fcopy_daemon /usr/local/sbin/
+
+# In newer kernel version hv_fcopy_daemon has changed to hv_fcopy_uio_daemon
+sudo cp hv_kvp_daemon hv_vss_daemon hv_fcopy_uio_daemon /usr/local/sbin/
 
 # Create or update systemd service units (if missing)
 sudo tee /etc/systemd/system/hv-kvp-daemon.service > /dev/null <<'EOF'
@@ -230,6 +241,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+# Change hv_fcopy_daemon to hv_fcopy_uio_daemon if necessary
 sudo tee /etc/systemd/system/hv-fcopy-daemon.service > /dev/null <<'EOF'
 [Unit]
 Description=Hyper-V file copy service daemon
@@ -276,7 +288,7 @@ sudo journalctl --vacuum-time=1d
 * Hide or Skip Grub loader at startup
 
 ```bash
-sudo nano /etc/default/grub
+sudo vim /etc/default/grub
 
 # edit the file
 GRUB_DEFAULT=0
@@ -303,9 +315,11 @@ sudo rm -f /zero.fill
 
 ### Step 6: Shutdown & Compact
 
-* Shut down VM:
+* Shut down VM
+* Reset any previous cloud-init
 
 ```bash
+sudo cloud-init clean --logs
 sudo shutdown -h now
 ```
 
@@ -383,4 +397,176 @@ Optimize-VHD -Path 'C:\path\to\base-vm.vhdx' -Mode Full
 
 ---
 
-### This is a living document—revise and extend as workflows improve
+## Operating System Specific Instructions
+
+### Debian
+
+* Debian won't come with sudo installed, it's advisable to install sudo in the GMI
+
+```bash
+# Switch to root
+su -
+
+apt update
+apt install -y sudo
+
+# Add sudo authorization to the admin user account
+usermod -aG sudo gmiadmin
+
+# Check that sudo is enabled:
+su - gmiadmin
+sudo whoami
+```
+
+* Hyper-V uses a weird shim file in the boot device list to use the grub loader. It's better to solidify that on the Boot VHD itself. Lacking this shim can cause cloned images to fail to boot.
+
+```bash
+sudo mkdir -p /boot/efi/EFI/BOOT
+sudo cp /boot/efi/EFI/debian/shimx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+sudo cp /boot/efi/EFI/debian/grubx64.efi /boot/efi/EFI/BOOT/grubx64.efi
+```
+
+### Ubuntu
+
+* With *recent Ubuntu Server releases*—especially in 24.04 and 25.04, you will find that `cloud-init` is installed but `systemctl status cloud-init` returns "*Unit cloud-init.service could not be found.*"
+* cloud-init *does NOT use a systemd unit named cloud-init.service anymore*. Instead, it uses multiple targeted units for each phase of its operation, e.g.:
+  * `cloud-init-local.service`
+  * `cloud-init.service`
+  * `cloud-config.service`
+  * `cloud-final.service`
+* On some Ubuntu versions, cloud-init.service is a "dummy" or symlink to these stages, or (rarely) isn’t present if systemd unit files are misconfigured or masked.
+
+* Try these commands:
+
+```bash
+systemctl list-units | grep cloud
+
+# or
+
+systemctl status cloud-init-local.service
+systemctl status cloud-config.service
+systemctl status cloud-final.service
+```
+
+* You’ll likely see that these services are present and have run.
+* Clean the image for future runs
+
+```bash
+sudo cloud-init clean --logs
+```
+
+### Fedora & Rocky
+
+```bash
+sudo dnf upgrade --refresh -y
+sudo dnf autoremove -y
+sudo dnf clean all
+
+# is cloud-init installed?
+rpm -qa | grep cloud-init
+
+# install cloud-init
+sudo dnf install -y cloud-init
+
+# enable and start
+sudo systemctl enable cloud-init
+
+# Restrict cloud-init to only look for NoCloud (seed ISO) or None (do nothing)
+echo 'datasource_list: [ NoCloud, None ]' | sudo tee /etc/cloud/cloud.cfg.d/99-DataSource.cfg
+
+# Start cloud-init
+sudo systemctl start cloud-init
+
+# status
+systemctl status cloud-init
+
+# In some versions Cloud init may have installed an ssh configuration. Delete it.
+sudo rm /etc/ssh/ssh_config.d/50-cloud-init.conf
+sudo systemctl reload sshd
+
+# check if the hyper-v daemons are installed
+ls -l /usr/sbin/hv_* /usr/libexec/hypervkvpd /usr/libexec/hypervvssd /usr/libexec/hypervfcopyd 2>/dev/null
+lsmod | grep hv
+
+# If hv-kvp and/or hv-vss do not exist, they need to be installed.
+# install the hyper-v daemons
+sudo dnf install -y hyperv-daemons
+# Restarting the VM should boot these damons just fine.
+
+sudo vim /etc/default/grub
+
+# edit the file
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=0
+GRUB_HIDDEN_TIMEOUT=0
+GRUB_HIDDEN_TIMEOUT_QUIET=true
+# save the file
+
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+
+sudo rm -f ~/.bash_history /root/.bash_history
+sudo journalctl --vacuum-time=1d
+
+sudo dd if=/dev/zero of=/zero.fill bs=1M
+sudo rm -f /zero.fill
+
+sudo cloud-init clean --logs
+sudo shutdown -h now
+```
+
+### OpenSUSE
+
+```bash
+sudo zypper refresh
+sudo zypper update -y
+sudo zypper packages --orphaned
+# don't remove an orphaned openSUSE-release-dvd repository; it will break everything.
+# remove any other orphaned packages
+
+# is cloud-init installed?
+zypper se --installed-only cloud-init
+rpm -qa | grep cloud-init
+which cloud-init
+
+# install cloud-init
+sudo zypper --non-interactive install cloud-init
+
+# Restrict cloud-init to only look for NoCloud (seed ISO) or None (do nothing)
+echo 'datasource_list: [ NoCloud, None ]' | sudo tee /etc/cloud/cloud.cfg.d/99-DataSource.cfg
+
+# start cloud-init
+sudo cloud-init init
+sudo cloud-init modules --mode=config
+sudo cloud-init modules --mode=final
+
+# enable cloud-init
+sudo systemctl enable cloud-init-local.service cloud-init.service cloud-final.service
+
+# cloud-init status
+systemctl status cloud-init-local.service
+systemctl status cloud-init.service
+systemctl status cloud-final.service
+
+# In recent versions of OpenSUSE the system will enable Hyper-V daemons automatically.
+# Usually no Hyper-V intervention is necessary
+systemctl status hv_kvp_daemon.service
+systemctl status hv_vss_daemon.service
+
+# Edit the GRUB file
+sudo vim /etc/default/grub
+
+# Just set TIMOUT to 0
+GRUB_TIMEOUT=0
+
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+
+# Clean the install and exit
+sudo rm -f ~/.bash_history /root/.bash_history
+sudo journalctl --vacuum-time=1d
+
+sudo dd if=/dev/zero of=/zero.fill bs=1M
+sudo rm -f /zero.fill
+
+sudo cloud-init clean --logs
+sudo shutdown -h now
+```
