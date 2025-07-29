@@ -36,6 +36,7 @@ $actionHandlers = @{
     backup     = 'Invoke-GenieBackup'
     restore    = 'Invoke-GenieRestore'
     copy       = 'Invoke-GenieCopy'
+    gmi        = 'Invoke-GenieGmi'
 }
 
 if (-not $script:action -or $script:action -eq 'help') {
@@ -45,11 +46,31 @@ if (-not $script:action -or $script:action -eq 'help') {
 
 if ($actionHandlers.ContainsKey($script:action)) {
     $handlerFn = $actionHandlers[$script:action]
-    & $handlerFn -InstanceName $script:instanceName -Options $script:options
-    exit 0
-}
-else {
-    Write-Host "Unknown or unimplemented action: $($script:action)" -ForegroundColor Red
-    Show-GenieHelp
-    exit 1
+    if ($script:action -eq 'gmi') {
+        # Parse subaction (first positional of remaining $args)
+        $remainingArgs = $args[1..($args.Count - 1)]
+        $subAction = if ($remainingArgs.Count -ge 1 -and $remainingArgs[0] -notmatch '^-') { $remainingArgs[0] } else { "help" }
+        $remainingArgs = if ($subAction -ne "help") { $remainingArgs[1..($remainingArgs.Count - 1)] } else { $remainingArgs }
+        $archive = $null
+        $options = @{}
+
+        # Parse -Archive if present
+        for ($i = 0; $i -lt $remainingArgs.Count; $i++) {
+            $argStr = [string]$remainingArgs[$i]
+            if ($argStr -eq '-Archive' -and ($i + 1) -lt $remainingArgs.Count) {
+                $archive = $remainingArgs[$i + 1]
+                $i++
+            }
+            elseif ($argStr -like '-*') {
+                $options[$argStr.TrimStart('-')] = $true
+            }
+        }
+
+        & $handlerFn -SubAction $subAction -Archive $archive -Options $options
+        exit 0
+    }
+    else {
+        & $handlerFn -InstanceName $script:instanceName -Options $script:options
+        exit 0
+    }
 }

@@ -140,6 +140,51 @@ Export-VM -Name '{instanceName}' -Path '{destinationFolder}'| Out-Null
         _logger.LogInformation("ISO swapped for VM: {InstanceName} ({InstanceId}) -> {IsoPath}", vm.Name, instanceId, isoPath);
     }
 
+    public Vm ImportGmi(Gmi gmi, string tmpFolder)
+    {
+        ArgumentNullException.ThrowIfNull(gmi);
+
+        if (string.IsNullOrWhiteSpace(tmpFolder) || !Directory.Exists(tmpFolder))
+            throw new DirectoryNotFoundException($"Temp folder not found: {tmpFolder}");
+
+        // Remove existing VM if it exists
+        var existingVm = _vmHelper.GetVmByName(gmi.GmiName);
+        if (existingVm != null)
+        {
+            if (VmLifecycleService.IsRunning(existingVm.Id))
+                _vmLifecycleService.Stop(existingVm.Id);
+            _vhdxManager.DeleteVhdx(existingVm.Id);
+            _vmLifecycleService.Delete(existingVm.Id, force: true);
+        }
+
+        // Locate the .vmcx file (by GUID, not display name)
+        string vmDir = Path.Combine(tmpFolder, Gmi.VirtualMachinesDir);
+        if (!Directory.Exists(vmDir))
+            throw new DirectoryNotFoundException($"Expected VM config directory not found: {vmDir}");
+
+        var vmcxFiles = Directory.GetFiles(vmDir, "*.vmcx");
+        if (vmcxFiles.Length == 0)
+            throw new FileNotFoundException($"No .vmcx file found in {vmDir}.");
+        if (vmcxFiles.Length > 1)
+            throw new InvalidOperationException($"Multiple .vmcx files found in {vmDir}; cannot determine which to import.");
+
+        string vmcxFile = vmcxFiles[0];
+
+        string importCmd = $@"
+Import-VM -Path '{vmcxFile}' -Copy -GenerateNewId:$false | Out-Null
+";
+        RunPowershellCommand("Import-VM (GMI)", importCmd);
+
+        var importedVm = _vmHelper.GetVmByName(gmi.GmiName)
+            ?? throw new InvalidOperationException(
+                $"VM import succeeded but VM '{gmi.GmiName}' not found in Hyper-V.");
+
+        _logger.LogInformation("GMI import completed successfully: {GmiName} (from {TmpFolder})", gmi.GmiName, tmpFolder);
+
+        return importedVm;
+    }
+
+
     /// <summary>
     /// Imports a VM using Hyper-V's Import-VM, either as a restore (same ID) or copy (new ID).
     /// - export: The Export metadata object (source of instance name, etc).

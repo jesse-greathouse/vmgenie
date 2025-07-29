@@ -55,6 +55,18 @@ public class GmiMetadata
         serializer.Serialize(writer, this);
     }
 
+    /// <summary>
+    /// Returns true if the provided VHDX file matches the stored checksum; otherwise false.
+    /// </summary>
+    public bool MatchesVhdx(string vhdxPath)
+    {
+        if (string.IsNullOrWhiteSpace(vhdxPath) || !File.Exists(vhdxPath))
+            return false; // Could log or handle differently, but boolean contract means: not matching.
+
+        string actualChecksum = ComputeSha256(vhdxPath);
+        return string.Equals(ChecksumSha256, actualChecksum, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string ComputeSha256(string filePath)
     {
         using var stream = File.OpenRead(filePath);

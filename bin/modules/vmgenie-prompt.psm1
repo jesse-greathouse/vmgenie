@@ -1,6 +1,7 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Import-Module "$PSScriptRoot\vmgenie-client.psm1"
 Import-Module "$PSScriptRoot\vmgenie-import.psm1"
+Import-Module "$PSScriptRoot\vmgenie-config.psm1"
 Import-Sharprompt
 
 function Invoke-UsernamePrompt {
@@ -734,6 +735,47 @@ function Invoke-DescriptionPrompt {
     return [Sharprompt.Prompt]::Input[string]($label, $default)
 }
 
+function Invoke-GmiArchivePrompt {
+    [CmdletBinding()]
+    param(
+        [string]$Label = 'Select GMI Archive to Import'
+    )
+
+    Import-Module "$PSScriptRoot\vmgenie-config.psm1" -ErrorAction Stop
+
+    $cfg = Get-Configuration
+
+    if (-not $cfg.ContainsKey('GMI_DIR') -or [string]::IsNullOrWhiteSpace($cfg['GMI_DIR'])) {
+        throw "GMI_DIR not set in configuration."
+    }
+    $directory = $cfg['GMI_DIR']
+
+    # Find all .zip files in the archive dir (non-recursive)
+    $files = Get-ChildItem -Path $directory -Filter '*.zip' -File | Sort-Object Name
+
+    if (-not $files -or $files.Count -eq 0) {
+        throw "No GMI archive (.zip) files found in '$directory'."
+    }
+
+    # Build prompt display list
+    $archiveMap = @{}
+    $displayList = [System.Collections.Generic.List[string]]::new()
+    foreach ($f in $files) {
+        $labelStr = "$($f.Name)  [$(Get-Date $f.LastWriteTime -Format 'yyyy-MM-dd HH:mm:ss')]"
+        $archiveMap[$labelStr] = $f.FullName
+        $displayList.Add($labelStr)
+    }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $Label
+    $options.Items = $displayList
+    $options.DefaultValue = $displayList[0]
+    $options.PageSize = [Math]::Min(10, $displayList.Count)
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+    return $archiveMap[$selected]
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -753,4 +795,5 @@ Export-ModuleMember -Function `
     Invoke-MaintainerPrompt, `
     Invoke-MaintainerEmailPrompt, `
     Invoke-SourceUrlPrompt, `
-    Invoke-DescriptionPrompt
+    Invoke-DescriptionPrompt, `
+    Invoke-GmiArchivePrompt

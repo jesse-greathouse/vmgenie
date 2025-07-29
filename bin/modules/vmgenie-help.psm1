@@ -86,6 +86,7 @@ function Show-GenieHelp {
     Write-Host "  backup         Backup a VM to a zip archive."
     Write-Host "  restore        Restore a VM from a backup archive."
     Write-Host "  copy           Make a copy of a VM (creates a new instance)."
+    Write-Host "  gmi            Manage GMI images."
     Write-Host "  swap-iso       Attach a new ISO to a VM."
     Write-Host ""
     Write-Host "For help on a specific action: genie <action> help"
@@ -277,6 +278,49 @@ function Show-GenieHelpCopy {
     Write-Host ""
 }
 
+function Show-GenieHelpGmi {
+    Write-Host ""
+    Write-Host "gmi: Manage Genie Machine Images (GMI) for portable base VM images." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:" -ForegroundColor Yellow
+    Write-Host "  genie gmi <subaction> [options]" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Subactions:" -ForegroundColor Yellow
+    Write-Host "  export               Export a Genie Machine Image (GMI) as a .zip archive."
+    Write-Host "  import [-Archive]    Import a Genie Machine Image (GMI) from a .zip archive."
+    Write-Host "  help                 Show this help message."
+    Write-Host ""
+    Write-Host "Examples:" -ForegroundColor Yellow
+    Write-Host "  genie gmi export"
+    Write-Host "  genie gmi import"
+    Write-Host "  genie gmi import -Archive C:\\Users\\you\\vmgenie\\var\\gmi\\GMI-Ubuntu-24.04.zip"
+    Write-Host ""
+}
+
+function Show-GenieHelpGmiExport {
+    Write-Host ""
+    Write-Host "gmi export: Export a Genie Machine Image as a .zip archive." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie gmi export"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Prompts you to select an unprovisioned base VM (GMI), and exports it as a GMI artifact."
+    Write-Host ""
+}
+
+function Show-GenieHelpGmiImport {
+    Write-Host ""
+    Write-Host "gmi import: Import a Genie Machine Image from a .zip archive." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie gmi import [-Archive <path>]"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Lets you select a GMI archive to import, or provide the path to a .zip GMI archive."
+    Write-Host ""
+}
+
 Export-ModuleMember -Function `
     Get-GenieArgs, `
     Show-GenieHelp, `
@@ -291,4 +335,7 @@ Export-ModuleMember -Function `
     Show-GenieHelpBackup, `
     Show-GenieHelpRestore, `
     Show-GenieHelpCopy, `
-    Show-GenieHelpSwapIso
+    Show-GenieHelpSwapIso, `
+    Show-GenieHelpGmi, `
+    Show-GenieHelpGmiExport, `
+    Show-GenieHelpGmiImport

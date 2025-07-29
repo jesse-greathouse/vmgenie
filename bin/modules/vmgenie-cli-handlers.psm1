@@ -1,4 +1,5 @@
 Import-Module "$PSScriptRoot/vmgenie-vm.psm1"
+Import-Module "$PSScriptRoot/vmgenie-gmi.psm1"
 Import-Module "$PSScriptRoot/vmgenie-help.psm1"
 
 function Invoke-GenieStart {
@@ -193,6 +194,41 @@ function Invoke-GenieCopy {
     Import-VMInstance -InstanceName $InstanceName -Mode 'copy' -NewInstanceName $NewInstanceName
 }
 
+function Invoke-GenieGmi {
+    param(
+        [string]$SubAction,
+        [string]$Archive,
+        [hashtable]$Options
+    )
+
+    switch ($SubAction.ToLower()) {
+        'export' {
+            if ($Options.ContainsKey('Help')) {
+                Show-GenieHelpGmiExport
+                exit 0
+            }
+            Export-Gmi
+            break
+        }
+        'import' {
+            if ($Options.ContainsKey('Help')) {
+                Show-GenieHelpGmiImport
+                exit 0
+            }
+            Import-Gmi -Archive $Archive
+            break
+        }
+        'help' {
+            Show-GenieHelpGmi
+            exit 0
+        }
+        default {
+            Show-GenieHelpGmi
+            exit 1
+        }
+    }
+}
+
 Export-ModuleMember -Function `
     Invoke-GenieStart, `
     Invoke-GenieStop, `
@@ -205,4 +241,5 @@ Export-ModuleMember -Function `
     Invoke-GenieSwapIso, `
     Invoke-GenieBackup, `
     Invoke-GenieRestore, `
-    Invoke-GenieCopy
+    Invoke-GenieCopy, `
+    Invoke-GenieGmi

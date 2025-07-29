@@ -289,4 +289,68 @@ public class CoordinatorService(
         }
     }
 
+    public Gmi ImportGmi(string archiveUri)
+    {
+        if (string.IsNullOrWhiteSpace(archiveUri))
+            throw new ArgumentNullException(nameof(archiveUri));
+        if (!File.Exists(archiveUri))
+            throw new FileNotFoundException("GMI archive not found.", archiveUri);
+
+        Gmi gmi = _archiveManager.UnzipGmi(archiveUri);
+        string tmpFolder = _archiveManager.GetTmpFolder(gmi);
+
+        string manifestFileName = Path.GetFileNameWithoutExtension(gmi.ArchiveName) + ".yml";
+        string readmeFileName = Path.GetFileNameWithoutExtension(gmi.ArchiveName) + ".md";
+        string manifestSource = Path.Combine(tmpFolder, manifestFileName);
+        string readmeSource = Path.Combine(tmpFolder, readmeFileName);
+
+        var metadata = GmiMetadata.Load(manifestSource);
+        string vhdxPath = Path.Combine(
+            tmpFolder,
+            Gmi.VirtualHardDisksDir,
+            $"{gmi.GmiName}.vhdx"
+        );
+
+        if (!metadata.MatchesVhdx(vhdxPath))
+            throw new InvalidOperationException(
+                $"Checksum mismatch: GMI VHDX may be corrupted or tampered with. " +
+                $"Manifest: {metadata.ChecksumSha256}, Actual: {(File.Exists(vhdxPath) ? GmiMetadata.ComputeSha256(vhdxPath) : "MISSING")}"
+            );
+
+        string manifestDest = Path.Combine(_config.GmiDir, manifestFileName);
+        string readmeDest = Path.Combine(_config.GmiDir, readmeFileName);
+
+        try
+        {
+            // Overwrite manifest and readme in var/gmi
+            if (File.Exists(manifestSource))
+                File.Copy(manifestSource, manifestDest, overwrite: true);
+            if (File.Exists(readmeSource))
+                File.Copy(readmeSource, readmeDest, overwrite: true);
+
+            _provisioningService.ImportGmi(gmi, tmpFolder);
+
+            _logger.LogInformation("GMI import completed successfully: {GmiName} ({Archive})", gmi.GmiName, gmi.ArchiveUri);
+
+            return gmi;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to import GMI from archive: {ArchiveUri}", archiveUri);
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tmpFolder))
+                    Directory.Delete(tmpFolder, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean up temp GMI import dir: {TmpFolder}", tmpFolder);
+            }
+        }
+    }
+
 }

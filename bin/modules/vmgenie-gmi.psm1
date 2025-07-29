@@ -1,6 +1,7 @@
 Import-Module "$PSScriptRoot\vmgenie-import.psm1"
 Import-Module "$PSScriptRoot\vmgenie-prompt.psm1"
 Import-Module "$PSScriptRoot\vmgenie-client.psm1"
+Import-Module "$PSScriptRoot\vmgenie-config.psm1"
 Import-YamlDotNet
 
 function Export-Gmi {
@@ -13,6 +14,12 @@ function Export-Gmi {
     [CmdletBinding()]
     param ()
 
+    $cfg = Get-Configuration
+    if (-not $cfg.ContainsKey('GMI_DIR') -or [string]::IsNullOrWhiteSpace($cfg['GMI_DIR'])) {
+        throw "[❌] GMI_DIR not set in configuration."
+    }
+    $gmiDir = $cfg['GMI_DIR']
+
     # Prompt the user for the base GMI (exclude provisioned VMs)
     $gmiObj = Invoke-VmPrompt -Provisioned 'exclude'
     if (-not $gmiObj) {
@@ -20,7 +27,8 @@ function Export-Gmi {
     }
     $gmiGuid = $gmiObj.Id
     $gmiName = $gmiObj.Name
-    $manifestFile = Join-Path -Path "var/gmi" -ChildPath ("$($gmiName -replace ' ', '-')" + ".yml")
+
+    $manifestFile = Join-Path -Path $gmiDir -ChildPath ("$($gmiName -replace ' ', '-')" + ".yml")
 
     if (-not (Test-Path $manifestFile)) {
         Write-Host "[ℹ️ ] No manifest found for this GMI. Beginning guided setup..." -ForegroundColor Yellow
@@ -65,6 +73,69 @@ function Export-Gmi {
     return $script:ExportResult
 }
 
+function Import-Gmi {
+    <#
+.SYNOPSIS
+    Import a Genie Machine Image (GMI) from a .zip archive via the backend service.
+.DESCRIPTION
+    Lets the user select a GMI archive from GMI_DIR or specify one via parameter, and imports it via the service.
+.PARAMETER Archive
+    The path to the GMI .zip archive. If omitted, prompts to select from available archives.
+#>
+    [CmdletBinding()]
+    param (
+        [string] $Archive
+    )
+
+    # Prompt if not provided
+    if (-not $Archive) {
+        try {
+            $Archive = Invoke-GmiArchivePrompt
+        }
+        catch {
+            throw "[❌] No GMI archive selected: $_"
+        }
+    }
+
+    if (-not (Test-Path $Archive)) {
+        throw "[❌] Archive file not found: $Archive"
+    }
+
+    $script:ImportResult = $null
+    $script:ImportError = $null
+
+    $parameters = @{
+        action  = 'import'
+        archive = $Archive
+    }
+
+    Write-Host "[⚙ ] Importing GMI archive $Archive ..." -ForegroundColor Yellow
+
+    Send-Event -Command 'gmi' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:ImportError = $Response.data
+        }
+        else {
+            $script:ImportResult = $Response.data
+        }
+        Complete-Request -Id $Response.id
+    } -TimeoutSeconds 300 | Out-Null
+
+    if ($script:ImportError) {
+        throw "[❌] Import failed: $script:ImportError"
+    }
+
+    if (-not $script:ImportResult) {
+        throw "[❌] No result returned from GMI import operation."
+    }
+
+    Write-Host "[✅] GMI imported successfully: $($script:ImportResult.gmiName)" -ForegroundColor Green
+    Write-Host "     Archive: $($script:ImportResult.archive)" -ForegroundColor Green
+
+    return $script:ImportResult
+}
+
 function New-GmiManifest {
     <#
     .SYNOPSIS
@@ -107,6 +178,12 @@ function New-GmiManifest {
         checksum_sha256   = ""
     }
 
+    # Ensure directory exists
+    $manifestDir = Split-Path -Path $ManifestPath -Parent
+    if (-not (Test-Path $manifestDir)) {
+        New-Item -Path $manifestDir -ItemType Directory | Out-Null
+    }
+
     # Serialize to YAML
     $builder = New-Object YamlDotNet.Serialization.SerializerBuilder
     $serializer = $builder.Build()
@@ -115,11 +192,6 @@ function New-GmiManifest {
     $writer.Flush()
     $yaml = $writer.ToString()
 
-    # Ensure directory exists
-    $manifestDir = Split-Path -Path $ManifestPath -Parent
-    if (-not (Test-Path $manifestDir)) {
-        New-Item -Path $manifestDir -ItemType Directory | Out-Null
-    }
     Set-Content -Path $ManifestPath -Value $yaml -Encoding UTF8
 
     Write-Host "[📝] GMI manifest created at: $ManifestPath" -ForegroundColor Green
@@ -127,5 +199,7 @@ function New-GmiManifest {
     return $ManifestPath
 }
 
-Export-ModuleMember -Function Export-Gmi, `
+Export-ModuleMember -Function `
+    Export-Gmi, `
+    Import-Gmi, `
     New-GmiManifest

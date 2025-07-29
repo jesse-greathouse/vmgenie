@@ -93,6 +93,28 @@ public class ArchiveManager(Config config, ILogger<ArchiveManager> logger)
         return export;
     }
 
+    public Gmi UnzipGmi(string archiveUri)
+    {
+        if (string.IsNullOrWhiteSpace(archiveUri))
+            throw new ArgumentNullException(nameof(archiveUri));
+
+        Gmi gmi = Gmi.FromArchiveUri(archiveUri);
+
+        string tmpFolder = GetTmpFolder(gmi);
+
+        if (Directory.Exists(tmpFolder))
+        {
+            _logger.LogWarning("Temp folder already exists, deleting: {TmpFolder}", tmpFolder);
+            Directory.Delete(tmpFolder, recursive: true);
+        }
+
+        _logger.LogInformation("Extracting GMI archive: {ArchiveUri} to {TmpFolder}", archiveUri, tmpFolder);
+        ZipFile.ExtractToDirectory(archiveUri, tmpFolder);
+        _logger.LogInformation("GMI archive extracted: {ArchiveUri} to {TmpFolder}", archiveUri, tmpFolder);
+
+        return gmi;
+    }
+
     public Export CopyExportAsNewInstance(string archiveUri, string newInstanceName)
     {
         // Parse original Export object from the archive

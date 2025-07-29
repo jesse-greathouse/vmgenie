@@ -24,6 +24,12 @@ public class GmiHandler(CoordinatorService coordinator) : IEventHandler
                 data = await HandleExportAsync(evt, ctx, _coordinator, token);
                 if (data is null) return;
                 break;
+
+            case "import":
+                data = await HandleImportAsync(evt, ctx, _coordinator, token);
+                if (data is null) return;
+                break;
+
             case "help":
             default:
                 data = HandleHelp();
@@ -108,6 +114,50 @@ public class GmiHandler(CoordinatorService coordinator) : IEventHandler
         }
     }
 
+    private static async Task<object?> HandleImportAsync(
+    Event evt,
+    IWorkerContext ctx,
+    CoordinatorService coordinator,
+    CancellationToken token)
+    {
+        if (!evt.Parameters.TryGetValue("archive", out var archiveObj) ||
+            archiveObj is not System.Text.Json.JsonElement elem ||
+            elem.ValueKind != System.Text.Json.JsonValueKind.String)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "Missing or invalid 'archive' parameter for import action."),
+                token);
+            return null;
+        }
+
+        var archiveUri = elem.GetString();
+        if (string.IsNullOrWhiteSpace(archiveUri))
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, "'archive' parameter cannot be empty."),
+                token);
+            return null;
+        }
+
+        try
+        {
+            var gmi = coordinator.ImportGmi(archiveUri);
+            return new
+            {
+                archive = gmi.ArchiveUri,
+                status = "imported",
+                gmiName = gmi.GmiName
+            };
+        }
+        catch (Exception ex)
+        {
+            await ctx.SendResponseAsync(
+                EventResponse.Error(evt, $"GMI import failed: {ex.Message}"),
+                token);
+            return null;
+        }
+    }
+
     private static Dictionary<string, object> HandleHelp()
     {
         var help = new Dictionary<string, object>
@@ -115,24 +165,33 @@ public class GmiHandler(CoordinatorService coordinator) : IEventHandler
             ["description"] = "The 'gmi' command manages Genie Machine Images (GMI) as base VM artifacts.",
             ["actions"] = new[]
             {
-                new Dictionary<string, string> {
-                    ["action"] = "export",
-                    ["description"] = "Exports a Genie Machine Image (GMI) by VM GUID. Parameter: id = VM GUID of the GMI."
-                },
-                new Dictionary<string, string> {
-                    ["action"] = "help",
-                    ["description"] = "Displays this help message."
-                }
+            new Dictionary<string, string> {
+                ["action"] = "export",
+                ["description"] = "Exports a Genie Machine Image (GMI) by VM GUID. Parameter: id = VM GUID of the GMI."
             },
+            new Dictionary<string, string> {
+                ["action"] = "import",
+                ["description"] = "Imports a Genie Machine Image (GMI) from a GMI .zip archive. Parameter: archive = path to the GMI archive."
+            },
+            new Dictionary<string, string> {
+                ["action"] = "help",
+                ["description"] = "Displays this help message."
+            }
+        },
             ["exampleRequests"] = new[]
             {
-                new Dictionary<string, object> {
-                    ["action"] = "export",
-                    ["parameters"] = new { action = "export", id = "GMI-VM-GUID" }
-                }
+            new Dictionary<string, object> {
+                ["action"] = "export",
+                ["parameters"] = new { action = "export", id = "GMI-VM-GUID" }
+            },
+            new Dictionary<string, object> {
+                ["action"] = "import",
+                ["parameters"] = new { action = "import", archive = "var/gmi/GMI-Ubuntu-24.04.zip" }
             }
+        }
         };
 
         return new Dictionary<string, object> { ["help"] = help };
     }
+
 }
