@@ -702,6 +702,37 @@ function Invoke-ImportModePrompt {
     throw "Unrecognized import mode selection."
 }
 
+function Invoke-MaintainerPrompt {
+    param (
+        [string] $default = "",
+        [string] $label = "Maintainer Name"
+    )
+    return [Sharprompt.Prompt]::Input[string]($label, $default)
+}
+
+function Invoke-MaintainerEmailPrompt {
+    param (
+        [string] $default = "",
+        [string] $label = "Maintainer Email"
+    )
+    return [Sharprompt.Prompt]::Input[string]($label, $default)
+}
+
+function Invoke-SourceUrlPrompt {
+    param (
+        [string] $default = "",
+        [string] $label = "Source URL"
+    )
+    return [Sharprompt.Prompt]::Input[string]($label, $default)
+}
+
+function Invoke-DescriptionPrompt {
+    param (
+        [string] $default = "",
+        [string] $label = "Description (optional)"
+    )
+    return [Sharprompt.Prompt]::Input[string]($label, $default)
+}
 
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
@@ -718,4 +749,8 @@ Export-ModuleMember -Function `
     Invoke-CreateVmConfirmPrompt, `
     Invoke-ExportVmWhileRunningPrompt, `
     Invoke-ExportArchivePrompt, `
-    Invoke-ImportModePrompt
+    Invoke-ImportModePrompt, `
+    Invoke-MaintainerPrompt, `
+    Invoke-MaintainerEmailPrompt, `
+    Invoke-SourceUrlPrompt, `
+    Invoke-DescriptionPrompt

@@ -213,4 +213,80 @@ public class CoordinatorService(
             }
         }
     }
+
+    public Gmi ExportGmi(string instanceId)
+    {
+        var vm = _vmHelper.GetVm(instanceId) ?? throw new InvalidOperationException($"VM not found for InstanceId: {instanceId}");
+
+        // Archive/file naming
+        string archiveName = Gmi.GetDefaultArchiveName(vm);
+        string archiveDir = _config.GmiDir;
+        string archiveUri = Path.Combine(archiveDir, archiveName);
+
+        // Manifest/readme paths
+        string manifestPath = Path.Combine(archiveDir, Path.GetFileNameWithoutExtension(archiveName) + ".yml");
+        string readmePath = Path.Combine(archiveDir, Path.GetFileNameWithoutExtension(archiveName) + ".md");
+
+        string tmpFolder = Path.Combine(_config.Tmp, Path.GetFileNameWithoutExtension(archiveName));
+        if (Directory.Exists(tmpFolder))
+            throw new InvalidOperationException($"Temp folder already exists: {tmpFolder}");
+
+        try
+        {
+            // Export the GMI VM to the tmp folder
+            _provisioningService.ExportVm(instanceId, tmpFolder);
+
+            // Manifest MUST exist now; throw if not
+            if (!File.Exists(manifestPath))
+                throw new FileNotFoundException($"GMI manifest does not exist: {manifestPath}");
+
+            // Load GMI metadata from YAML
+            var metadata = GmiMetadata.Load(manifestPath);
+
+            // Compose VHDX path: tmpFolder/Virtual Hard Disks/{gmi.gmiName}.vhdx
+            var gmiName = vm.Name; // Assumes GMI.Name is the VM name
+            var vhdxFile = Path.Combine(tmpFolder, Gmi.VirtualHardDisksDir, $"{gmiName}.vhdx");
+            if (!File.Exists(vhdxFile))
+                throw new FileNotFoundException($"Expected VHDX not found: {vhdxFile}");
+
+            // Compute new checksum
+            metadata.ChecksumSha256 = GmiMetadata.ComputeSha256(vhdxFile);
+
+            // Save the updated metadata back to manifestPath
+            metadata.Save(manifestPath);
+
+            if (!File.Exists(readmePath))
+                File.WriteAllText(readmePath, "");
+
+            // Copy them into tmpFolder for inclusion in zip
+            File.Copy(manifestPath, Path.Combine(tmpFolder, Path.GetFileName(manifestPath)), overwrite: true);
+            File.Copy(readmePath, Path.Combine(tmpFolder, Path.GetFileName(readmePath)), overwrite: true);
+
+            // Zip it up
+            var gmi = Gmi.FromArchiveUri(archiveUri);
+            _archiveManager.ZipGmi(gmi);
+
+            _logger.LogInformation("GMI export completed: {Archive} (VM: {VmName})", archiveUri, vm.Name);
+
+            return gmi;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to export GMI from InstanceId: {InstanceId}", instanceId);
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tmpFolder))
+                    Directory.Delete(tmpFolder, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean up temp GMI export dir: {TmpFolder}", tmpFolder);
+            }
+        }
+    }
+
 }

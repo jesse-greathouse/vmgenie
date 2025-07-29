@@ -857,14 +857,14 @@ function Publish-VmArtifact {
     $osVersion = Invoke-OsVersionPrompt -OperatingSystem $os
 
     # capture full VM object
-    $baseVmObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude'
-    Write-Host "V Selected Base VM: $($baseVmObj.Name) [ID: $($baseVmObj.Id)]" -ForegroundColor Cyan
+    $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude'
+    Write-Host "V Selected GMI: $($gmiObj.Name) [ID: $($gmiObj.Id)]" -ForegroundColor Cyan
 
     # determine if the VM is a differencing disk
     $mergeAvhdx = $false
 
-    if (Get-IsDifferencingDisk -Guid $baseVmObj.Id) {
-        $warningMessage = "[WARNING] The virtual hard drive of '$($baseVmObj.Name)' is a differencing disk (.avhdx). " +
+    if (Get-IsDifferencingDisk -Guid $gmiObj.Id) {
+        $warningMessage = "[WARNING] The virtual hard drive of '$($gmiObj.Name)' is a differencing disk (.avhdx). " +
         "Merging it into its parent will REMOVE all snapshots/checkpoints and is destructive."
         Write-Host $warningMessage -ForegroundColor Yellow
 
@@ -902,7 +902,7 @@ function Publish-VmArtifact {
         'INSTANCE'         = $instance
         'OPERATING_SYSTEM' = $os
         'OS_VERSION'       = $osVersion
-        'BASE_VM'          = $baseVmObj.Id
+        'BASE_VM'          = $gmiObj.Id
         'VM_SWITCH'        = $vmSwitchObj.Id
         'HOSTNAME'         = $hostname
         'USERNAME'         = $username

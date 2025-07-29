@@ -40,6 +40,34 @@ public class ArchiveManager(Config config, ILogger<ArchiveManager> logger)
     }
 
     /// <summary>
+    /// Zips the folder represented by the Gmi into the archive location, then deletes the temp folder.
+    /// </summary>
+    public void ZipGmi(Gmi gmi)
+    {
+        ArgumentNullException.ThrowIfNull(gmi);
+
+        string tmpFolder = GetTmpFolder(gmi);
+
+        if (!Directory.Exists(tmpFolder))
+        {
+            _logger.LogError("Temp folder does not exist for GMI export: {Folder}", tmpFolder);
+            throw new DirectoryNotFoundException($"Temp folder does not exist: {tmpFolder}");
+        }
+
+        _logger.LogInformation("Creating GMI archive: {ArchiveUri} from {TmpFolder}", gmi.ArchiveUri, tmpFolder);
+
+        if (File.Exists(gmi.ArchiveUri))
+            File.Delete(gmi.ArchiveUri);
+
+        ZipFile.CreateFromDirectory(tmpFolder, gmi.ArchiveUri, CompressionLevel.Optimal, includeBaseDirectory: false);
+
+        _logger.LogInformation("GMI archive created: {ArchiveUri}", gmi.ArchiveUri);
+
+        Directory.Delete(tmpFolder, recursive: true);
+        _logger.LogInformation("Temporary folder deleted: {TmpFolder}", tmpFolder);
+    }
+
+    /// <summary>
     /// Unzips the archive file to the temp folder location.
     /// </summary>
     public Export UnzipExport(string archiveUri)
@@ -191,9 +219,20 @@ public class ArchiveManager(Config config, ILogger<ArchiveManager> logger)
     }
 
     /// <summary>
+    /// Calculates the temp folder for a given Gmi based on config and archive name.
+    /// </summary>
+    public string GetTmpFolder(Gmi gmi)
+    {
+        ArgumentNullException.ThrowIfNull(gmi);
+
+        string tmpFolderName = Path.GetFileNameWithoutExtension(gmi.ArchiveName);
+        return Path.Combine(_config.Tmp, tmpFolderName);
+    }
+
+    /// <summary>
     /// Recursively copies the contents of a directory. Overwrites files in destination if specified.
     /// </summary>
-    private static void CopyDirectoryRecursive(string sourceDir, string destDir, bool overwrite = false)
+    public static void CopyDirectoryRecursive(string sourceDir, string destDir, bool overwrite = false)
     {
         if (!Directory.Exists(destDir))
             Directory.CreateDirectory(destDir);

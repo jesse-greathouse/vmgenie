@@ -31,6 +31,7 @@ public static class EventHandlerEngineBuilder
         engine.Register("status", new StatusHandler());
         engine.Register("operating-system", new OperatingSystemHandler(osRepo));
         engine.Register("os-version", new OsVersionHandler(osRepo));
+        engine.Register("gmi", new GmiHandler(coordinator));
         engine.Register("vm", new VmHandler(vmRepo, vmNetAddressRepo, vmProvisioner, vmLifecycle, coordinator));
         engine.Register("vm-switch", new VmSwitchHandler(vmSwitchRepo));
         engine.Register("artifact", new ArtifactHandler(config, exportRepo));

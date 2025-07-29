@@ -33,6 +33,9 @@ public class Config
     [YamlMember(Alias = "CLOUD_DIR")]
     public string CloudDir { get; set; } = string.Empty;
 
+    [YamlMember(Alias = "GMI_DIR")]
+    public string GmiDir { get; set; } = string.Empty;
+
     [YamlMember(Alias = "TEMPLATE_DIR")]
     public string TemplateDir { get; set; } = string.Empty;
 

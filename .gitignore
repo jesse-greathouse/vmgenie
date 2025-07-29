@@ -3,6 +3,7 @@
 
 # IDE/editor settings
 .vscode/
+.vs/
 .vstags
 .idea/
 *.swp
