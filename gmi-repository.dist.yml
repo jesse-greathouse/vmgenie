@@ -1,0 +1,119 @@
+Debian-12:
+  - name: "GMI Debian 12"
+    version: "12"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Debian-12.zip"
+    crc64nvme: "OyXSsOe/cuI="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Debian 12 Operating System."
+    hyperv_generation: 2
+
+Fedora-40:
+  - name: "GMI Fedora 40"
+    version: "40"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Fedora-40.zip"
+    crc64nvme: "t9cYGBuOZLg="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Fedora 40 Operating System."
+    hyperv_generation: 2
+
+Fedora-42:
+  - name: "GMI Fedora 42"
+    version: "42"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Fedora-42.zip"
+    crc64nvme: "gEADQ0g/PTE="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Fedora 42 Operating System."
+    hyperv_generation: 2
+
+OpenSUSE-15.6:
+  - name: "GMI OpenSUSE 15.6"
+    version: "15.6"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-15.6.zip"
+    crc64nvme: "ug2hrjV/4FQ="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the openSUSE 15.6 Operating System."
+    hyperv_generation: 2
+
+OpenSUSE-16-Beta:
+  - name: "GMI OpenSUSE 16-Beta"
+    version: "16-Beta"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-16-Beta.zip"
+    crc64nvme: "yQoWqYI5p0c="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the openSUSE 16-Beta Operating System."
+    hyperv_generation: 2
+
+OpenSUSE-Tumbleweed:
+  - name: "GMI OpenSUSE Tumbleweed"
+    version: "Tumbleweed"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-Tumbleweed.zip"
+    crc64nvme: "zEw9/jxGaSI="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the openSUSE Tumbleweed Operating System."
+    hyperv_generation: 2
+
+Rocky-10:
+  - name: "GMI Rocky 10"
+    version: "10"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Rocky-10.zip"
+    crc64nvme: "GdafwuqeClY="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Rocky 10 Operating System."
+    hyperv_generation: 2
+
+Rocky-9:
+  - name: "GMI Rocky 9"
+    version: "9"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Rocky-9.zip"
+    crc64nvme: "KDtdko6ZRUo="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Rocky 9 Operating System."
+    hyperv_generation: 2
+
+Ubuntu-24.04:
+  - name: "GMI Ubuntu 24.04"
+    version: "24.04"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Ubuntu-24.04.zip"
+    crc64nvme: "edD29PbqzNQ="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Ubuntu 24.04 Operating System."
+    hyperv_generation: 2
+
+Ubuntu-25.04:
+  - name: "GMI Ubuntu 25.04"
+    version: "25.04"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Ubuntu-25.04.zip"
+    crc64nvme: "v3GZSv+tIcM="
+    last_modified: "2025-07-30T18:09:36+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "This is the official vmgenie GMI for the Ubuntu 25.04 Operating System."
+    hyperv_generation: 2
