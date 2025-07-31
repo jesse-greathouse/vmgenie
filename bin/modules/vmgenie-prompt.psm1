@@ -331,7 +331,8 @@ function Invoke-VmPrompt {
         [ValidateSet('all', 'exclude', 'only')]
         [string] $Provisioned = 'all',
 
-        [switch] $New
+        [switch] $New,
+        [switch] $Gmi
     )
 
     $script:VmResult = $null
@@ -339,13 +340,12 @@ function Invoke-VmPrompt {
 
     # Build parameters for service request
     $parameters = @{ action = 'list' }
-
     if ($Provisioned -ne 'all') {
         $parameters.provisioned = $Provisioned
     }
 
     # Query the service for the VM list
-    $result = Send-Event -Command 'vm' -Parameters $parameters -Handler {
+    Send-Event -Command 'vm' -Parameters $parameters -Handler {
         param ($Response)
 
         if ($Response.status -ne 'ok') {
@@ -356,11 +356,7 @@ function Invoke-VmPrompt {
 
         $script:VmResult = $Response.data.vms
         Complete-Request -Id $Response.id
-    }
-
-    if (-not $result) {
-        throw "Failed to retrieve VM list: service did not respond or response was invalid."
-    }
+    } | Out-Null
 
     if ($script:VmError) {
         throw "Service error: $script:VmError"
@@ -372,29 +368,29 @@ function Invoke-VmPrompt {
 
     # Build a hashtable: display name → VM object
     $vmMap = @{}
-
     foreach ($vm in $script:VmResult) {
         if ($null -ne $vm.ArtifactInstance) {
             $displayName = "{0} ( {1} {2} )" -f `
-                $vm.Name, `
-                $vm.ArtifactInstance.OperatingSystem, `
-                $vm.ArtifactInstance.Version
+            ($vm.Name.Trim()), `
+            ($vm.ArtifactInstance.OperatingSystem.Trim()), `
+            ($vm.ArtifactInstance.Version.Trim())
         }
         else {
-            $displayName = $vm.Name
+            $displayName = $vm.Name.Trim()
         }
-
         $vmMap[$displayName] = $vm
     }
+
+    # Choose label for "new" entry based on -Gmi
+    $newLabel = if ($Gmi) { "🆕 Download New GMI" } else { "🆕 Create New VM" }
 
     # Prepare SharpPrompt
     $options = New-Object Sharprompt.SelectOptions[string]
     $options.Message = $label
     $options.Items = [System.Collections.Generic.List[string]]::new()
 
-    # If -New is passed, add "Create New VM"
+    # If -New is passed, add "Create New ..." entry
     if ($New) {
-        $newLabel = "🆕 Create New VM"
         $vmMap[$newLabel] = '__NEW__'
         $options.Items.Add($newLabel)
     }
@@ -431,7 +427,7 @@ function Invoke-VmPrompt {
 
     $options.DefaultValue = $defaultVm
 
-    $selectedName = [Sharprompt.Prompt]::Select[string]($options)
+    $selectedName = ([Sharprompt.Prompt]::Select[string]($options)).Trim()
 
     return $vmMap[$selectedName]
 }
@@ -776,6 +772,77 @@ function Invoke-GmiArchivePrompt {
     return $archiveMap[$selected]
 }
 
+function Invoke-GmiPackagePrompt {
+    [CmdletBinding()]
+    param (
+        [string]$Os = $null,
+        [string]$Version = $null,
+        [string]$Label = 'Select GMI Package'
+    )
+
+    # Prepare parameters for event request
+    $parameters = @{ action = 'list' }
+    if ($Os) { $parameters.os = $Os }
+    if ($Version) { $parameters.version = $Version }
+
+    $script:GmiPackagesResult = $null
+    $script:GmiPackagesError = $null
+
+    Send-Event -Command 'gmi-package' -Parameters $parameters -Handler {
+        param ($Response)
+        if ($Response.status -ne 'ok') {
+            $script:GmiPackagesError = $Response.data.details
+            Complete-Request -Id $Response.id
+            return
+        }
+        # Handle the different data shapes depending on parameters
+        if ($Response.data.package) {
+            # Single package (os+version query)
+            $script:GmiPackagesResult = @($Response.data.package)
+        }
+        elseif ($Response.data.packages) {
+            # List of packages (os only, key, or all)
+            $script:GmiPackagesResult = $Response.data.packages
+        }
+        else {
+            $script:GmiPackagesResult = @()
+        }
+        Complete-Request -Id $Response.id
+    } | Out-Null
+
+    if ($script:GmiPackagesError) {
+        throw "Service error: $script:GmiPackagesError"
+    }
+    if (-not $script:GmiPackagesResult -or $script:GmiPackagesResult.Count -eq 0) {
+        throw "No GMI packages returned from service."
+    }
+
+    # Build prompt display list
+    $packageMap = @{}
+    $displayList = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($pkg in $script:GmiPackagesResult) {
+        $os = if ($pkg.Name -match 'GMI (\w+)') { $Matches[1] } else { $null }
+        $version = $pkg.Version
+        $desc = $pkg.Description
+        $labelStr = "$($pkg.Name)"
+        if ($desc) { $labelStr += " — $desc" }
+        # Defensive trim for key
+        $labelStr = $labelStr.Trim()
+        $packageMap[$labelStr] = $pkg
+        $displayList.Add($labelStr)
+    }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = $Label
+    $options.Items = $displayList
+    $options.DefaultValue = $displayList[0]
+    $options.PageSize = [Math]::Min(12, $displayList.Count)
+
+    $selected = [Sharprompt.Prompt]::Select[string]($options)
+    return $packageMap[$selected]
+}
+
 Export-ModuleMember -Function `
     Invoke-UsernamePrompt, `
     Invoke-TimezonePrompt, `
@@ -796,4 +863,5 @@ Export-ModuleMember -Function `
     Invoke-MaintainerEmailPrompt, `
     Invoke-SourceUrlPrompt, `
     Invoke-DescriptionPrompt, `
-    Invoke-GmiArchivePrompt
+    Invoke-GmiArchivePrompt, `
+    Invoke-GmiPackagePrompt

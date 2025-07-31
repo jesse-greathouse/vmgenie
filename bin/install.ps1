@@ -1,4 +1,3 @@
-# bin/install.ps1
 # Orchestrates bootstrap (elevated), build (normal), and configure (normal) steps
 
 Write-Host "🧰 Starting vmgenie installation..." -ForegroundColor Cyan
@@ -61,6 +60,24 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "✅ Build succeeded. Continuing with configuration..." -ForegroundColor Green
+
+# Step 2.5: Copy dist GMI repository file if user copy does not exist
+$distRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.dist.yml"
+$userRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.yml"
+
+if (-Not (Test-Path $userRepoFile)) {
+    try {
+        Copy-Item $distRepoFile $userRepoFile -Force
+        Write-Host "✅ Copied default gmi-repository.dist.yml to gmi-repository.yml" -ForegroundColor Green
+    }
+    catch {
+        Write-Warning "⚠️ Failed to copy gmi-repository.dist.yml to gmi-repository.yml: $_"
+        exit 1
+    }
+}
+else {
+    Write-Host "ℹ️ gmi-repository.yml already exists; skipping copy." -ForegroundColor Yellow
+}
 
 # Step 3: Run configure (normal privileges)
 $configureScript = Join-Path $PSScriptRoot "configure.ps1"

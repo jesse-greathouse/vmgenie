@@ -25,6 +25,7 @@ public static class EventHandlerEngineBuilder
         var vhdxManager = services.GetRequiredService<VhdxManager>();
         var coordinator = services.GetRequiredService<CoordinatorService>();
         var logger = services.GetRequiredService<ILogger<EventHandlerEngine>>();
+        var gmiPackageRepo = services.GetRequiredService<GmiPackageRepository>();
 
         var engine = new EventHandlerEngine(logger);
 
@@ -32,6 +33,7 @@ public static class EventHandlerEngineBuilder
         engine.Register("operating-system", new OperatingSystemHandler(osRepo));
         engine.Register("os-version", new OsVersionHandler(osRepo));
         engine.Register("gmi", new GmiHandler(coordinator));
+        engine.Register("gmi-package", new GmiPackageHandler(gmiPackageRepo));
         engine.Register("vm", new VmHandler(vmRepo, vmNetAddressRepo, vmProvisioner, vmLifecycle, coordinator));
         engine.Register("vm-switch", new VmSwitchHandler(vmSwitchRepo));
         engine.Register("artifact", new ArtifactHandler(config, exportRepo));

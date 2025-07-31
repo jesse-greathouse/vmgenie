@@ -308,7 +308,7 @@ public class CoordinatorService(
         string vhdxPath = Path.Combine(
             tmpFolder,
             Gmi.VirtualHardDisksDir,
-            $"{gmi.GmiName}.vhdx"
+            $"{metadata.VmName}.vhdx"
         );
 
         if (!metadata.MatchesVhdx(vhdxPath))

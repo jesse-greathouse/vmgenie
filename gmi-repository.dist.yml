@@ -7,7 +7,7 @@ Debian-12:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Debian 12 Operating System."
+    description: "The official vmgenie Debian 12 image."
     hyperv_generation: 2
 
 Fedora-40:
@@ -19,7 +19,7 @@ Fedora-40:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Fedora 40 Operating System."
+    description: "The official vmgenie Fedora 40 image."
     hyperv_generation: 2
 
 Fedora-42:
@@ -31,7 +31,7 @@ Fedora-42:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Fedora 42 Operating System."
+    description: "The official vmgenie Fedora 42 image."
     hyperv_generation: 2
 
 OpenSUSE-15.6:
@@ -43,19 +43,19 @@ OpenSUSE-15.6:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the openSUSE 15.6 Operating System."
+    description: "The official vmgenie openSUSE 15.6 image."
     hyperv_generation: 2
 
-OpenSUSE-16-Beta:
-  - name: "GMI OpenSUSE 16-Beta"
-    version: "16-Beta"
-    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-16-Beta.zip"
-    crc64nvme: "yQoWqYI5p0c="
-    last_modified: "2025-07-30T18:09:36+00:00"
+OpenSUSE-16.Beta:
+  - name: "GMI OpenSUSE 16.Beta"
+    version: "16.Beta"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-16.Beta.zip"
+    crc64nvme: "rMcb0M6KzPI="
+    last_modified: "2025-07-31T14:56:28+00:00"
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the openSUSE 16-Beta Operating System."
+    description: "The official vmgenie openSUSE 16.Beta image."
     hyperv_generation: 2
 
 OpenSUSE-Tumbleweed:
@@ -67,7 +67,7 @@ OpenSUSE-Tumbleweed:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the openSUSE Tumbleweed Operating System."
+    description: "The official vmgenie openSUSE Tumbleweed image."
     hyperv_generation: 2
 
 Rocky-10:
@@ -79,7 +79,7 @@ Rocky-10:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Rocky 10 Operating System."
+    description: "The official vmgenie Rocky 10 image."
     hyperv_generation: 2
 
 Rocky-9:
@@ -91,7 +91,7 @@ Rocky-9:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Rocky 9 Operating System."
+    description: "The official vmgenie Rocky 9 image."
     hyperv_generation: 2
 
 Ubuntu-24.04:
@@ -103,7 +103,7 @@ Ubuntu-24.04:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Ubuntu 24.04 Operating System."
+    description: "The official vmgenie Ubuntu 24.04 image."
     hyperv_generation: 2
 
 Ubuntu-25.04:
@@ -115,5 +115,5 @@ Ubuntu-25.04:
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "This is the official vmgenie GMI for the Ubuntu 25.04 Operating System."
+    description: "The official vmgenie Ubuntu 25.04 image."
     hyperv_generation: 2

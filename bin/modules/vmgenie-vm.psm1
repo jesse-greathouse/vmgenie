@@ -1,5 +1,6 @@
 Import-Module "$PSScriptRoot\vmgenie-prompt.psm1"
 Import-Module "$PSScriptRoot\vmgenie-import.psm1"
+Import-Module "$PSScriptRoot\vmgenie-gmi.psm1"
 Import-Module "$PSScriptRoot\vmgenie-key.psm1"
 Import-Module "$PSScriptRoot\vmgenie-template.psm1"
 Import-Module "$PSScriptRoot\vmgenie-config.psm1"
@@ -723,8 +724,11 @@ function Connect-VMInstance {
 
     # Use the new helper: may prompt/create as needed, always returns a valid VM
     $selection = Resolve-VMInstanceSelectionOrNew -InstanceName $InstanceName
-    $guid = $selection.Guid
+    if (-not $selection.DisplayName) {
+        throw "[❌] Internal error: selection.DisplayName is null"
+    }
     $InstanceName = $selection.DisplayName
+    $guid = $selection.Guid
 
     Write-Verbose "[INFO] Selected instance name: $InstanceName"
 
@@ -816,39 +820,32 @@ function Connect-VMInstance {
 }
 
 function Publish-VmArtifact {
-    <#
-    .SYNOPSIS
-    Guided wizard to produce a VM artifact product directory under var/cloud/<INSTANCE>.
-    .DESCRIPTION
-    Prompts the user for all necessary values, generates an SSH keypair, renders templates,
-    and writes files into var/cloud/<INSTANCE> following the standard structure.
-    .PARAMETER InstanceName
-    Optional instance name to use. If not provided, the user will be prompted.
-    .OUTPUTS
-    The path to the created artifact directory.
-    #>
     [CmdletBinding()]
     param (
         [string] $InstanceName
     )
 
-    # Bring in global application configuration to use for some default values
+    # Load configuration
     $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
     $cfg = Get-Configuration
     if ($null -eq $cfg) { throw "[FATAL] Get-Configuration returned null." }
+    if (-not $cfg.ContainsKey('GMI_DIR') -or [string]::IsNullOrWhiteSpace($cfg['GMI_DIR'])) {
+        throw "[❌] GMI_DIR not set in configuration."
+    }
+    $gmiDir = $cfg['GMI_DIR']
 
     Write-Host "=== VmGenie Artifact Wizard ===" -ForegroundColor Cyan
 
-    # Instance name: prompt only if not provided
+    # Instance name
     if ($InstanceName) {
-        $instance = $InstanceName
+        $instance = $InstanceName.Trim()
         Write-Host "✔ Instance Name: $instance"
     }
     else {
         $instance = Invoke-InstancePrompt
+        $instance = $instance.Trim()
     }
 
-    # Check for existing artifact
     if (Test-IsPublished -InstanceName $instance) {
         throw "[FATAL] Instance '$instance' is already published (artifact exists in var/cloud/$instance)."
     }
@@ -856,32 +853,62 @@ function Publish-VmArtifact {
     $os = Invoke-OperatingSystemPrompt
     $osVersion = Invoke-OsVersionPrompt -OperatingSystem $os
 
-    # capture full VM object
-    $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude'
+    # Select GMI (with "New" option!)
+    $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude' -label 'Select GMI' -New -Gmi
+
+    # If "New GMI", go through online GMI package flow
+    if ($gmiObj -eq '__NEW__') {
+        $pkg = Invoke-GmiPackagePrompt -Os $os -Version $osVersion
+
+        $downloadUrl = $pkg.Url
+        $targetPath = Join-Path $gmiDir ([System.IO.Path]::GetFileName($downloadUrl))
+
+        Write-Host "⬇️ Downloading GMI package from $downloadUrl..." -ForegroundColor Yellow
+        try {
+            # Download file (PowerShell 7+)
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -UseBasicParsing
+        }
+        catch {
+            throw "[❌] Failed to download GMI package: $_"
+        }
+        Write-Host "[OK] Downloaded to $targetPath" -ForegroundColor Green
+
+        try {
+            Import-Gmi -Archive $targetPath | Out-Null
+        }
+        catch {
+            throw "[❌] Failed to import GMI: $_"
+        }
+
+        # After import, locate the new GMI VM object by Name
+        # It will typically be available now as a base VM, so:
+        $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude' -label 'Select GMI'
+        # (Alternatively, filter by name: $pkg.Name if you want to be more deterministic)
+    }
+
     Write-Host "V Selected GMI: $($gmiObj.Name) [ID: $($gmiObj.Id)]" -ForegroundColor Cyan
 
-    # determine if the VM is a differencing disk
-    $mergeAvhdx = $false
+    # -- Rest of your function remains unchanged below --
 
+    # Determine if the VM is a differencing disk
+    $mergeAvhdx = $false
     if (Get-IsDifferencingDisk -Guid $gmiObj.Id) {
         $warningMessage = "[WARNING] The virtual hard drive of '$($gmiObj.Name)' is a differencing disk (.avhdx). " +
         "Merging it into its parent will REMOVE all snapshots/checkpoints and is destructive."
         Write-Host $warningMessage -ForegroundColor Yellow
-
         $mergeAvhdx = Invoke-MergeAvhdxPrompt
-
         Write-Verbose "[INFO] MERGE_AVHDX decision: $mergeAvhdx"
     }
 
-    # capture VM switch
+    # Capture VM switch
     $vmSwitchObj = Invoke-VmSwitchPrompt -default $cfg.VM_SWITCH
     Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
 
     $hostname = Invoke-HostnamePrompt  -value $instance
     $username = Invoke-UsernamePrompt  -value $cfg.USERNAME
     $timezone = Invoke-TimezonePrompt  -value $cfg.TIMEZONE
-    $layout = Invoke-LayoutPrompt      -value $cfg.LAYOUT
-    $locale = Invoke-LocalePrompt      -value $cfg.LOCALE
+    $layout = Invoke-LayoutPrompt    -value $cfg.LAYOUT
+    $locale = Invoke-LocalePrompt    -value $cfg.LOCALE
 
     # Paths
     $artifactDir = Join-Path -Path $repoRoot -ChildPath "var/cloud/$instance"
@@ -1116,6 +1143,7 @@ function Invoke-ProvisionVm {
     if (-not $InstanceName) {
         $InstanceName = Invoke-InstancePrompt
     }
+    $InstanceName = $InstanceName.Trim()
 
     if (Test-IsProvisioned -InstanceName $InstanceName) {
         throw "[FATAL] Instance '$InstanceName' is already provisioned."

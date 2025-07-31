@@ -8,6 +8,10 @@
 .idea/
 *.swp
 
+# GMI repository file
+# Allows the user to override official GMI images with custom images.
+gmi-repository.yml
+
 # ignore src/obj for downloaded packages
 src/obj
 src/bin

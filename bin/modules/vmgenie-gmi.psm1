@@ -131,7 +131,6 @@ function Import-Gmi {
     }
 
     Write-Host "[✅] GMI imported successfully: $($script:ImportResult.gmiName)" -ForegroundColor Green
-    Write-Host "     Archive: $($script:ImportResult.archive)" -ForegroundColor Green
 
     return $script:ImportResult
 }

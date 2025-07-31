@@ -38,6 +38,7 @@ public class Program
                 services.AddSingleton<CoordinatorService>();
                 services.AddSingleton<ExportRepository>();
                 services.AddSingleton<InstanceRepository>();
+                services.AddSingleton<GmiPackageRepository>();
                 services.AddSingleton<OperatingSystemTemplateRepository>();
                 services.AddSingleton<VhdxManager>();
                 services.AddSingleton<VmHelper>();
