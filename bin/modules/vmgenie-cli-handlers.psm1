@@ -218,6 +218,21 @@ function Invoke-GenieGmi {
             Import-Gmi -Archive $Archive
             break
         }
+        'fetch' {
+            if ($Options.ContainsKey('Help')) {
+                Show-GenieHelpGmiFetch
+                exit 0
+            }
+            $os = if ($Options.ContainsKey('Os') -and $null -ne $Options['Os'] -and '' -ne $Options['Os']) { $Options['Os'] } else { $null }
+            $version = if ($Options.ContainsKey('Version') -and $null -ne $Options['Version'] -and '' -ne $Options['Version']) { $Options['Version'] } else { $null }
+
+            if ($null -eq $os -and $null -ne $version) {
+                throw "You must specify -Os when using -Version."
+            }
+
+            Install-GmiPackage -Os $os -Version $version
+            break
+        }
         'help' {
             Show-GenieHelpGmi
             exit 0

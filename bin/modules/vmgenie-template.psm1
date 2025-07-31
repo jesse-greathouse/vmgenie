@@ -21,7 +21,7 @@ function Convert-Template {
         throw "Errors parsing template:`n$messages"
     }
 
-    $dict = [System.Collections.Generic.Dictionary[string,object]]::new()
+    $dict = [System.Collections.Generic.Dictionary[string, object]]::new()
     foreach ($k in $Variables.Keys) { $dict[$k] = $Variables[$k] }
 
     $result = $template.Render($dict)
@@ -32,7 +32,7 @@ function Convert-Template {
     }
 
     $result | Set-Content -Path $OutputPath -Encoding utf8
-    Write-Host "[OK] Rendered $TemplatePath → $OutputPath" -ForegroundColor Green
+    Write-Verbose "[OK] Rendered $TemplatePath → $OutputPath"
 }
 
 Export-ModuleMember -Function Convert-Template

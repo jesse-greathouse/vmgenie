@@ -288,12 +288,15 @@ function Show-GenieHelpGmi {
     Write-Host "Subactions:" -ForegroundColor Yellow
     Write-Host "  export               Export a Genie Machine Image (GMI) as a .zip archive."
     Write-Host "  import [-Archive]    Import a Genie Machine Image (GMI) from a .zip archive."
+    Write-Host "  fetch [-Os] [-Version]   Download and import a GMI image from the online repository."
     Write-Host "  help                 Show this help message."
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Yellow
     Write-Host "  genie gmi export"
     Write-Host "  genie gmi import"
     Write-Host "  genie gmi import -Archive C:\\Users\\you\\vmgenie\\var\\gmi\\GMI-Ubuntu-24.04.zip"
+    Write-Host "  genie gmi fetch"
+    Write-Host "  genie gmi fetch -Os Ubuntu -Version 25.04"
     Write-Host ""
 }
 
@@ -321,6 +324,24 @@ function Show-GenieHelpGmiImport {
     Write-Host ""
 }
 
+function Show-GenieHelpGmiFetch {
+    Write-Host ""
+    Write-Host "gmi fetch: Download and install a GMI package from the online repository." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  genie gmi fetch [-Os <name>] [-Version <version>]"
+    Write-Host ""
+    Write-Host "Description:"
+    Write-Host "  Prompts you to select a GMI package from the repository, downloads it, and imports it for use."
+    Write-Host "  Use -Os to filter by operating system, and -Version to filter by version (must be used with -Os)."
+    Write-Host ""
+    Write-Host "Examples:"
+    Write-Host "  genie gmi fetch"
+    Write-Host "  genie gmi fetch -Os Fedora"
+    Write-Host "  genie gmi fetch -Os Ubuntu -Version 25.04"
+    Write-Host ""
+}
+
 Export-ModuleMember -Function `
     Get-GenieArgs, `
     Show-GenieHelp, `
@@ -338,4 +359,5 @@ Export-ModuleMember -Function `
     Show-GenieHelpSwapIso, `
     Show-GenieHelpGmi, `
     Show-GenieHelpGmiExport, `
-    Show-GenieHelpGmiImport
+    Show-GenieHelpGmiImport, `
+    Show-GenieHelpGmiFetch

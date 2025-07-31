@@ -198,7 +198,58 @@ function New-GmiManifest {
     return $ManifestPath
 }
 
+function Install-GmiPackage {
+    [CmdletBinding()]
+    param (
+        [string]$Os,
+        [string]$Version
+    )
+
+    # Custom prompt label depending on filter scenario
+    $label = switch ("$($Os):$($Version)") {
+        # Neither provided
+        ":" { 'Select a GMI Package (all available)' }
+        # Only OS provided
+        { $_ -match "^.+:$" } { "Select GMI Package for $Os (all versions)" }
+        # Only Version provided (unlikely, but handle it)
+        { $_ -match "^:.+$" } { "Select GMI Package (any OS), version $Version" }
+        # Both provided
+        default { "Select GMI Package for $Os $Version" }
+    }
+
+    # Prompt for GMI package (filtered or not, based on param)
+    $pkg = Invoke-GmiPackagePrompt -Os $Os -Version $Version -Label $label
+
+    # Defensive: If the user cancels or something goes wrong
+    if (-not $pkg) {
+        throw "No GMI package selected or available."
+    }
+
+    $downloadUrl = $pkg.Url
+    $gmiDir = (Get-Configuration)['GMI_DIR']
+    $targetPath = Join-Path $gmiDir ([System.IO.Path]::GetFileName($downloadUrl))
+
+    Write-Host "⬇️ Downloading GMI package from $downloadUrl..." -ForegroundColor Yellow
+    try {
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -UseBasicParsing
+    }
+    catch {
+        throw "[❌] Failed to download GMI package: $_"
+    }
+    Write-Verbose "[OK] Downloaded to $targetPath"
+
+    try {
+        Import-Gmi -Archive $targetPath | Out-Null
+    }
+    catch {
+        throw "[❌] Failed to import GMI: $_"
+    }
+
+    return $pkg
+}
+
 Export-ModuleMember -Function `
     Export-Gmi, `
     Import-Gmi, `
+    Install-GmiPackage, `
     New-GmiManifest

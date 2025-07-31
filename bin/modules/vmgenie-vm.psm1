@@ -829,10 +829,6 @@ function Publish-VmArtifact {
     $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
     $cfg = Get-Configuration
     if ($null -eq $cfg) { throw "[FATAL] Get-Configuration returned null." }
-    if (-not $cfg.ContainsKey('GMI_DIR') -or [string]::IsNullOrWhiteSpace($cfg['GMI_DIR'])) {
-        throw "[❌] GMI_DIR not set in configuration."
-    }
-    $gmiDir = $cfg['GMI_DIR']
 
     Write-Host "=== VmGenie Artifact Wizard ===" -ForegroundColor Cyan
 
@@ -856,39 +852,18 @@ function Publish-VmArtifact {
     # Select GMI (with "New" option!)
     $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude' -label 'Select GMI' -New -Gmi
 
-    # If "New GMI", go through online GMI package flow
+    # If "New GMI", go through online GMI package flow using Install-GmiPackage
     if ($gmiObj -eq '__NEW__') {
-        $pkg = Invoke-GmiPackagePrompt -Os $os -Version $osVersion
-
-        $downloadUrl = $pkg.Url
-        $targetPath = Join-Path $gmiDir ([System.IO.Path]::GetFileName($downloadUrl))
-
-        Write-Host "⬇️ Downloading GMI package from $downloadUrl..." -ForegroundColor Yellow
-        try {
-            # Download file (PowerShell 7+)
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath -UseBasicParsing
-        }
-        catch {
-            throw "[❌] Failed to download GMI package: $_"
-        }
-        Write-Host "[OK] Downloaded to $targetPath" -ForegroundColor Green
-
-        try {
-            Import-Gmi -Archive $targetPath | Out-Null
-        }
-        catch {
-            throw "[❌] Failed to import GMI: $_"
-        }
+        # This will prompt, download, import, and return the GMI object
+        Install-GmiPackage -Os $os -Version $osVersion | Out-Null
 
         # After import, locate the new GMI VM object by Name
-        # It will typically be available now as a base VM, so:
+        # Typically, $installedGmi is what you want (if Install-GmiPackage returns Get-Gmi -Name $pkg.Name)
+        # But, if your workflow expects a prompt here, you can re-invoke selection:
         $gmiObj = Invoke-VmPrompt -Os $os -Version $osVersion -Provisioned 'exclude' -label 'Select GMI'
-        # (Alternatively, filter by name: $pkg.Name if you want to be more deterministic)
     }
 
     Write-Host "V Selected GMI: $($gmiObj.Name) [ID: $($gmiObj.Id)]" -ForegroundColor Cyan
-
-    # -- Rest of your function remains unchanged below --
 
     # Determine if the VM is a differencing disk
     $mergeAvhdx = $false
@@ -1271,7 +1246,7 @@ Publish-SeedIso -InstanceName test5
             throw "[❌] Failed to create ISO: $($Response.data.details)"
         }
 
-        Write-Host "[OK] Seed ISO created → $($Response.data.isoPath)" -ForegroundColor Green
+        Write-Verbose "[OK] Seed ISO created → $($Response.data.isoPath)"
         $script:isoPath = $Response.data.isoPath
 
         Complete-Request -Id $Response.id

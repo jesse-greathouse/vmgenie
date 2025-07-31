@@ -780,6 +780,10 @@ function Invoke-GmiPackagePrompt {
         [string]$Label = 'Select GMI Package'
     )
 
+    if ($Version -and -not $Os) {
+        throw "You must specify -Os when using -Version."
+    }
+
     # Prepare parameters for event request
     $parameters = @{ action = 'list' }
     if ($Os) { $parameters.os = $Os }
@@ -814,7 +818,7 @@ function Invoke-GmiPackagePrompt {
         throw "Service error: $script:GmiPackagesError"
     }
     if (-not $script:GmiPackagesResult -or $script:GmiPackagesResult.Count -eq 0) {
-        throw "No GMI packages returned from service."
+        throw "There are no GMI packages for $Os $Version"
     }
 
     # Build prompt display list

@@ -43,6 +43,7 @@ A demonstration of a modern Virtual Machine provisioning tool for Hyper‑V on W
       - [8. Backup and Restore](#8-backup-and-restore)
       - [9. Clone/Copy a VM](#9-clonecopy-a-vm)
       - [10. Swap/Attach ISO](#10-swapattach-iso)
+      - [11. Genie Machine Images (GMI): Export, Import, Fetch](#11-genie-machine-images-gmi-export-import-fetch)
     - [Command Reference](#command-reference)
     - [Interactive Prompts and Flexibility](#interactive-prompts-and-flexibility)
     - [Getting Help](#getting-help)
@@ -217,6 +218,38 @@ Attach or replace an ISO for a VM:
 genie swap-iso mylab -IsoPath C:\path\to\my.iso
 ```
 
+#### 11. Genie Machine Images (GMI): Export, Import, Fetch
+
+The `gmi` subcommand manages portable base VM images (GMIs), allowing you to export, import, and fetch ready-to-use base images from an online repository.
+
+**Export a GMI archive:**
+
+```sh
+genie gmi export
+````
+
+Exports an unprovisioned base VM as a `.zip` archive for reuse or distribution.
+
+**Import a GMI archive:**
+
+```sh
+genie gmi import
+# or import from a specific archive:
+genie gmi import -Archive C:\Users\you\vmgenie\var\gmi\GMI-Ubuntu-24.04.zip
+```
+
+Imports a GMI `.zip` archive (either interactively or from a file).
+
+**Fetch a GMI from the online repository:**
+
+```sh
+genie gmi fetch
+genie gmi fetch -Os Ubuntu
+genie gmi fetch -Os Ubuntu -Version 25.04
+```
+
+Prompts you to select (and downloads) an official GMI image. Use `-Os` to filter by OS, and `-Version` to filter by version (must be used with `-Os`). Throws an error if you use `-Version` without `-Os`.
+
 ---
 
 ### Command Reference
@@ -235,6 +268,7 @@ genie swap-iso mylab -IsoPath C:\path\to\my.iso
 | `restore`   | Restore VM from a backup archive (VM must be stopped)             | `genie restore mylab`                      |
 | `copy`      | Clone a VM from a backup as a new instance                        | `genie copy mylab -NewInstanceName foo`    |
 | `swap-iso`  | Attach or swap the ISO for a VM                                   | `genie swap-iso mylab -IsoPath C:\foo.iso` |
+| `gmi`       | Manage Genie Machine Images (export/import/fetch GMIs)            | `genie gmi fetch -Os Ubuntu -Version 25.04`|
 
 ---
 
@@ -260,6 +294,14 @@ genie provision help
 genie backup help
 genie swap-iso help
 ```
+
+For detailed help on GMI subcommands:
+
+```sh
+genie gmi export -Help
+genie gmi import -Help
+genie gmi fetch -Help
+````
 
 ---
 

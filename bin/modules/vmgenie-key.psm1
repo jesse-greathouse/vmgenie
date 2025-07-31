@@ -47,7 +47,7 @@ The directory where the key pair should be saved.
         throw "❌ ssh-keygen failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "[OK] SSH key pair generated at: $privateKeyPath | $publicKeyPath" -ForegroundColor Green
+    Write-Verbose "[OK] SSH key pair generated at: $privateKeyPath | $publicKeyPath"
 }
 
 function Remove-Key {

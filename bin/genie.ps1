@@ -46,15 +46,29 @@ if (-not $script:action -or $script:action -eq 'help') {
 
 if ($actionHandlers.ContainsKey($script:action)) {
     $handlerFn = $actionHandlers[$script:action]
+
     if ($script:action -eq 'gmi') {
-        # Parse subaction (first positional of remaining $args)
-        $remainingArgs = $args[1..($args.Count - 1)]
+        # Defensive: build remainingArgs as an array no matter what
+        $remainingArgs = @()
+        if ($args.Count -gt 1) {
+            $remainingArgs = @($args[1..($args.Count - 1)])
+        }
+
+        # Subaction is first non-flag positional, or "help" if none
         $subAction = if ($remainingArgs.Count -ge 1 -and $remainingArgs[0] -notmatch '^-') { $remainingArgs[0] } else { "help" }
-        $remainingArgs = if ($subAction -ne "help") { $remainingArgs[1..($remainingArgs.Count - 1)] } else { $remainingArgs }
+
+        # Now remove the subAction from the args **only if it was present**
+        if ($subAction -ne "help" -and $remainingArgs.Count -ge 2) {
+            # This ensures [1..N] only when N >= 1
+            $remainingArgs = @($remainingArgs[1..($remainingArgs.Count - 1)])
+        }
+        else {
+            $remainingArgs = @()
+        }
+
         $archive = $null
         $options = @{}
 
-        # Parse -Archive if present
         for ($i = 0; $i -lt $remainingArgs.Count; $i++) {
             $argStr = [string]$remainingArgs[$i]
             if ($argStr -eq '-Archive' -and ($i + 1) -lt $remainingArgs.Count) {
@@ -62,7 +76,14 @@ if ($actionHandlers.ContainsKey($script:action)) {
                 $i++
             }
             elseif ($argStr -like '-*') {
-                $options[$argStr.TrimStart('-')] = $true
+                $optName = $argStr.TrimStart('-')
+                if (($i + 1) -lt $remainingArgs.Count -and $remainingArgs[$i + 1] -notlike '-*') {
+                    $options[$optName] = $remainingArgs[$i + 1]
+                    $i++
+                }
+                else {
+                    $options[$optName] = $true
+                }
             }
         }
 
