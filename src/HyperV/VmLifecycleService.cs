@@ -110,8 +110,8 @@ if (-not $vm) {{ exit 1 }}
 $net = Get-VMNetworkAdapter -VM $vm
 if (-not $net) {{ exit 1 }}
 
-$ip = $net.IPAddresses | Where-Object {{ $_ -and -not $_.StartsWith('169.') }}
-if ($ip) {{ exit 0 }} else {{ exit 2 }}
+$ipv4 = $net.IPAddresses | Where-Object {{ $_ -and ($_ -match '^\d{{1,3}}(\.\d{{1,3}}){{3}}$') -and -not $_.StartsWith('169.') }}
+if ($ipv4) {{ exit 0 }} else {{ exit 2 }}
 ";
 
         var (_, stderr, exitCode) = PowerShellHelper.RunSafe(psCommand);

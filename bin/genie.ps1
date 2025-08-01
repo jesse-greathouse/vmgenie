@@ -95,3 +95,9 @@ if ($actionHandlers.ContainsKey($script:action)) {
         exit 0
     }
 }
+else {
+    Write-Host ("[❌] Unknown command: '{0}'" -f $script:action) -ForegroundColor Red
+    Write-Host "For usage, try: genie help" -ForegroundColor Yellow
+    Show-GenieHelp
+    exit 1
+}

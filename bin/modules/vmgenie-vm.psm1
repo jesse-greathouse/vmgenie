@@ -195,7 +195,10 @@ function Get-VMInstanceStatus {
     }
 
     # Column widths
-    $colName = 15
+    # Dynamically set Name column width based on longest name length
+    $minColName = 15
+    $maxNameLength = ($rows | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum
+    $colName = [Math]::Max($minColName, $maxNameLength)
     $colState = 10
     $colIP = 20
     $colGuid = 36
@@ -816,7 +819,7 @@ function Connect-VMInstance {
 
     Write-Host "[➡ ] Connecting to $InstanceName at $ipv4 as $username …" -ForegroundColor Cyan
 
-    & ssh -i $pemPath -o IdentitiesOnly=yes "$username@$ipv4"
+    & ssh -i $pemPath -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "$username@$ipv4"
 }
 
 function Publish-VmArtifact {
