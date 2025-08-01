@@ -211,6 +211,70 @@ function Invoke-LocalePrompt {
     return [Sharprompt.Prompt]::Select[string]($options)
 }
 
+function Invoke-CpuCountPrompt {
+    param (
+        [int] $value = $null,
+        [string] $label = 'Number of CPUs'
+    )
+
+    # Get host logical CPU count (safest default, cross-platform)
+    $maxCpus = [Environment]::ProcessorCount
+
+    # Build CPU options: [1, 2, ..., $maxCpus]
+    $cpuOptions = 1..$maxCpus | ForEach-Object { $_.ToString() }
+
+    # Default selection (use value if provided, else 1)
+    $def = if ($value -and $value -ge 1 -and $value -le $maxCpus) { $value.ToString() } else { "1" }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = "$label (logical CPUs available: $maxCpus)"
+    $options.Items = [System.Collections.Generic.List[string]]::new()
+    $cpuOptions | ForEach-Object { $options.Items.Add($_) }
+    $options.DefaultValue = $def
+    $options.PageSize = $maxCpus
+
+    return [int]([Sharprompt.Prompt]::Select[string]($options))
+}
+
+function Invoke-MemoryMbPrompt {
+    param (
+        [int] $value = $null,
+        [string] $label = 'Memory (MB)'
+    )
+
+    # Get total physical memory (in MB)
+    $totalMemoryMb = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+
+    $memOptions = [System.Collections.Generic.List[string]]::new()
+    $memVal = 512
+    while ($memVal -le $totalMemoryMb) {
+        $memOptions.Add($memVal.ToString())
+        if ($memVal -eq 512) {
+            $memVal = 1024
+        }
+        elseif ($memVal -lt 4096) {
+            $memVal += 1024
+        }
+        elseif ($memVal -lt 32768) {
+            $memVal += 2048
+        }
+        else {
+            $memVal += 4096
+        }
+    }
+
+    # Default selection logic
+    $def = if ($value -and $memOptions -contains $value.ToString()) { $value.ToString() } else { "512" }
+
+    $options = New-Object Sharprompt.SelectOptions[string]
+    $options.Message = "$label (max host memory: $totalMemoryMb MB)"
+    $options.Items = $memOptions
+    $options.DefaultValue = $def
+    $options.PageSize = $memOptions.Count
+
+    return [int]([Sharprompt.Prompt]::Select[string]($options))
+}
+
 function Invoke-OperatingSystemPrompt {
     param (
         [string] $default = $null,
@@ -852,6 +916,8 @@ Export-ModuleMember -Function `
     Invoke-TimezonePrompt, `
     Invoke-LayoutPrompt, `
     Invoke-LocalePrompt, `
+    Invoke-CpuCountPrompt, `
+    Invoke-MemoryMbPrompt, `
     Invoke-OperatingSystemPrompt, `
     Invoke-OsVersionPrompt, `
     Invoke-VmPrompt, `

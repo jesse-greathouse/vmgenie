@@ -49,6 +49,8 @@ $userName = $env:USERNAME
 $defaultLayout = 'us'
 $defaultLocale = 'en_US.UTF-8'
 $defaultTimezone = 'Etc/UTC'
+$defaultCpuCount = 1
+$defaultMemoryMb = 512
 $vmSwitch = ''
 
 # Defaults as .NET Dictionary
@@ -58,6 +60,8 @@ $defaults['VM_SWITCH'] = $vmSwitch
 $defaults['TIMEZONE'] = $defaultTimezone
 $defaults['LOCALE'] = $defaultLocale
 $defaults['LAYOUT'] = $defaultLayout
+$defaults['CPU_COUNT'] = $defaultCpuCount
+$defaults['MEMORY_MB'] = $defaultMemoryMb
 $defaults['LOG_DIR'] = $logDir
 $defaults['CLOUD_DIR'] = $cloudDir
 $defaults['GMI_DIR'] = $gmiDir
@@ -76,6 +80,8 @@ $prompts = @{
     'TIMEZONE'  = 'Invoke-TimezonePrompt'
     'LAYOUT'    = 'Invoke-LayoutPrompt'
     'LOCALE'    = 'Invoke-LocalePrompt'
+    'CPU_COUNT' = 'Invoke-CpuCountPrompt'
+    'MEMORY_MB' = 'Invoke-MemoryMbPrompt'
 }
 
 function Get-ConfigValueOrNull {

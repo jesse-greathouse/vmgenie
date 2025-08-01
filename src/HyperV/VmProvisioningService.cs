@@ -20,7 +20,14 @@ public class VmProvisioningService(
     private readonly ILogger<VmProvisioningService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly Config _config = config ?? throw new ArgumentNullException(nameof(config));
 
-    public Vm ProvisionVm(string baseVmGuid, string instanceName, string vmSwitchGuid, bool mergeDifferencingDisk = false, int generation = 2)
+    public Vm ProvisionVm(
+        string baseVmGuid,
+        string instanceName,
+        string vmSwitchGuid,
+        bool mergeDifferencingDisk = false,
+        int generation = 2,
+        string cpuCount = "1",
+        string memoryMb = "512")
     {
         EnsureVmDoesNotExist(instanceName);
         _logger.LogInformation(
@@ -31,15 +38,18 @@ public class VmProvisioningService(
         string isoPath = GetIsoPath(artifactDir);
         string clonedVhdx = _vhdxManager.CloneBaseVhdx(baseVmGuid, instanceName, mergeDifferencingDisk);
         string switchName = ResolveSwitchName(vmSwitchGuid);
+        string memStr = $"{memoryMb}MB";
 
         _logger.LogInformation("Provisioning VM '{InstanceName}' using PowerShell.", instanceName);
 
         try
         {
-            CreateVm(instanceName, clonedVhdx, switchName, generation);
+            CreateVm(instanceName, clonedVhdx, switchName, generation, memStr);
             if (generation == 2) ConfigureSecureBoot(instanceName);
             EnsureDvdDriveExists(instanceName);
             AttachIso(instanceName, isoPath);
+
+            SetVmCpuCount(instanceName, cpuCount);
         }
         catch (Exception ex)
         {
@@ -316,16 +326,29 @@ Rename-VM -VM (Get-VM -Id '{importedVmId}') -NewName '{export.InstanceName}' | O
         return switchName;
     }
 
-    private void CreateVm(string instanceName, string vhdxPath, string switchName, int generation)
+    private void CreateVm(string instanceName, string vhdxPath, string switchName, int generation, string memoryStr)
     {
         string cmd = $@"
 New-VM -Name '{instanceName}' `
     -Generation {generation} `
-    -MemoryStartupBytes 512MB `
+    -MemoryStartupBytes {memoryStr} `
     -VHDPath '{vhdxPath}' `
     -SwitchName '{switchName}' | Out-Null
 ";
         RunPowershellCommand("New-VM", cmd);
+    }
+
+    private void SetVmCpuCount(string instanceName, string cpuCount)
+    {
+        // Defensive: Only proceed if string is not null/empty and > 0
+        if (string.IsNullOrWhiteSpace(cpuCount) || cpuCount == "0")
+            return;
+
+        string cmd = $@"
+Set-VMProcessor -VMName '{instanceName}' -Count {cpuCount} | Out-Null
+";
+        RunPowershellCommand("Set-VMProcessor", cmd);
+        _logger.LogInformation("Set VM '{InstanceName}' CPU count to {CpuCount}", instanceName, cpuCount);
     }
 
     private void ConfigureSecureBoot(string instanceName)

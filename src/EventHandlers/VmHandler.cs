@@ -360,10 +360,24 @@ public class VmHandler(
             }
         }
 
+        string cpuCount = evt.Parameters.TryGetValue("cpuCount", out var cpuCountObj)
+            && cpuCountObj is System.Text.Json.JsonElement cpuCountElem
+            && cpuCountElem.ValueKind == System.Text.Json.JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(cpuCountElem.GetString())
+            ? cpuCountElem.GetString()!
+            : "1";
+
+        string memoryMb = evt.Parameters.TryGetValue("memoryMb", out var memoryMbObj)
+            && memoryMbObj is System.Text.Json.JsonElement memoryMbElem
+            && memoryMbElem.ValueKind == System.Text.Json.JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(memoryMbElem.GetString())
+            ? memoryMbElem.GetString()!
+            : "512";
+
         Vm vm;
         try
         {
-            vm = _provisioner.ProvisionVm(baseVmGuid, instanceName, vmSwitchGuid, mergeDifferencingDisk, generation);
+            vm = _provisioner.ProvisionVm(baseVmGuid, instanceName, vmSwitchGuid, mergeDifferencingDisk, generation, cpuCount, memoryMb);
         }
         catch (Exception ex)
         {

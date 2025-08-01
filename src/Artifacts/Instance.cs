@@ -7,6 +7,8 @@ public class Instance(
     string os,
     string version,
     string baseVm,
+    string cpuCount,
+    string memoryMb,
     string vmSwitch,
     string username,
     bool mergeAvhdx,
@@ -16,6 +18,8 @@ public class Instance(
     public string OperatingSystem { get; } = os;
     public string Version { get; } = version;
     public string BaseVm { get; } = baseVm;
+    public string CpuCount { get; } = cpuCount;
+    public string MemoryMb { get; } = memoryMb;
     public string VmSwitch { get; } = vmSwitch;
     public string Username { get; } = username;
     public bool MergeAvhdx { get; } = mergeAvhdx;

@@ -58,6 +58,8 @@ public class InstanceRepository
                     metadata.Os,
                     metadata.Version,
                     metadata.BaseVm,
+                    metadata.CpuCount,
+                    metadata.MemoryMb,
                     metadata.VmSwitch,
                     metadata.Username,
                     metadata.MergeAvhdx,
@@ -107,6 +109,8 @@ public class InstanceRepository
         public string Os { get; set; } = "";
         public string Version { get; set; } = "";
         public string BaseVm { get; set; } = "";
+        public string CpuCount { get; set; } = "";
+        public string MemoryMb { get; set; } = "";
         public string VmSwitch { get; set; } = "";
         public string Username { get; set; } = "";
         public bool MergeAvhdx { get; set; }

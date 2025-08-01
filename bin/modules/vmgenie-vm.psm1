@@ -875,6 +875,10 @@ function Publish-VmArtifact {
         Write-Verbose "[INFO] MERGE_AVHDX decision: $mergeAvhdx"
     }
 
+    # Prompt for CPU and Memory allocations (after GMI selection, before VM switch)
+    $cpuCount = Invoke-CpuCountPrompt -value $cfg.CPU_COUNT
+    $memoryMb = Invoke-MemoryMbPrompt -value $cfg.MEMORY_MB
+
     # Capture VM switch
     $vmSwitchObj = Invoke-VmSwitchPrompt -default $cfg.VM_SWITCH
     Write-Host "V Selected VM Switch: $($vmSwitchObj.Name) [ID: $($vmSwitchObj.Id)]" -ForegroundColor Cyan
@@ -913,6 +917,8 @@ function Publish-VmArtifact {
         'LOCALE'           = $locale
         'PRIVKEY'          = ((Get-Content -Raw -Path $pubKeyPath).Trim())
         'MERGE_AVHDX'      = $mergeAvhdx
+        'CPU_COUNT'        = $cpuCount
+        'MEMORY_MB'        = $memoryMb
     }
 
     # Render metadata.yml
@@ -1156,6 +1162,8 @@ function Invoke-ProvisionVm {
     # Extract required metadata
     $baseVmGuid = $metadata['base_vm']
     $vmSwitchGuid = $metadata['vm_switch']
+    $cpuCount = $metadata.ContainsKey('cpu_count') ? $metadata['cpu_count'] : '1'
+    $memoryMb = $metadata.ContainsKey('memory_mb') ? $metadata['memory_mb'] : '512'
     $mergeDifferencingDisk = $false
 
     if ($metadata.ContainsKey('merge_avhdx')) {
@@ -1177,6 +1185,8 @@ function Invoke-ProvisionVm {
         instanceName          = $InstanceName
         vmSwitchGuid          = $vmSwitchGuid
         mergeDifferencingDisk = $mergeDifferencingDisk
+        cpuCount              = $cpuCount
+        memoryMb              = $memoryMb
     }
 
     $script:ProvisionVmError = $null

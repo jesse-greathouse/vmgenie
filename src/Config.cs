@@ -56,4 +56,10 @@ public class Config
 
     [YamlMember(Alias = "TMP")]
     public string Tmp { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "CPU_COUNT")]
+    public string CpuCount { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "MEMORY_MB")]
+    public string MemoryMb { get; set; } = string.Empty;
 }
