@@ -17,7 +17,6 @@ function Start-BootstrapElevated {
     else {
         Write-Host "⚠️ Not running elevated. Launching bootstrap in a new elevated session..." -ForegroundColor Yellow
 
-        # Compose a properly-escaped command block
         $cmd = @"
 & {
     & '$bootstrapScript'
@@ -39,17 +38,7 @@ function Start-BootstrapElevated {
     }
 }
 
-# Step 1: Run bootstrap (elevated, required for SCM install/registry/etc)
-$bootstrapExitCode = Start-BootstrapElevated
-
-if ($bootstrapExitCode -ne 0) {
-    Write-Warning "🚫 Bootstrap failed with exit code $bootstrapExitCode. Installation aborted."
-    exit 1
-}
-
-Write-Host "✅ Bootstrap succeeded. Continuing with configuration..." -ForegroundColor Green
-
-# Step 2: Copy dist GMI repository file if user copy does not exist
+# Step 1: Copy dist GMI repository file if user copy does not exist
 $distRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.dist.yml"
 $userRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.yml"
 
@@ -67,14 +56,13 @@ else {
     Write-Host "ℹ️ gmi-repository.yml already exists; skipping copy." -ForegroundColor Yellow
 }
 
-# Step 3: Install 'genie.ps1' script to per-user WindowsApps for CLI access (non-elevated)
+# Step 2: Install 'genie.ps1' script to per-user WindowsApps for CLI access (non-elevated)
 $windowsAppsDir = Join-Path $env:USERPROFILE "AppData\Local\Microsoft\WindowsApps"
 $targetScript = Join-Path $windowsAppsDir "genie.ps1"
 $sourceScript = Join-Path $PSScriptRoot "genie.ps1"
 
 Write-Host "🗃️ Installing genie.ps1 to: $targetScript" -ForegroundColor Cyan
 
-# Delete the old script if it exists (avoid permission errors)
 if (Test-Path $targetScript) {
     try {
         Remove-Item $targetScript -Force
@@ -86,7 +74,6 @@ if (Test-Path $targetScript) {
     }
 }
 
-# Copy new script into place
 try {
     Copy-Item $sourceScript $targetScript -Force
     Write-Host "✅ genie.ps1 installed to WindowsApps" -ForegroundColor Green
@@ -96,15 +83,38 @@ catch {
     exit 1
 }
 
-# Step 4: Run configure (normal privileges)
+# Step 3: Run configure (normal privileges) - runs interactive for everything but VM_SWITCH
 $configureScript = Join-Path $PSScriptRoot "configure.ps1"
-Write-Host "⚙️ Running configuration script..." -ForegroundColor Cyan
+Write-Host "⚙️ Running initial configuration (all keys except VM_SWITCH)..." -ForegroundColor Cyan
 
 & "$configureScript"
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
     Write-Warning "🚫 Configuration failed with exit code $exitCode. Installation aborted."
+    exit 1
+}
+
+# Step 4: Run bootstrap (elevated, required for SCM install/registry/etc)
+Write-Host "🚀 Installing and starting VmGenie service..." -ForegroundColor Cyan
+
+$bootstrapExitCode = Start-BootstrapElevated
+
+if ($bootstrapExitCode -ne 0) {
+    Write-Warning "🚫 Bootstrap failed with exit code $bootstrapExitCode. Installation aborted."
+    exit 1
+}
+
+Write-Host "✅ Bootstrap/service install succeeded." -ForegroundColor Green
+
+# Step 5: Now that the service is up, configure VM_SWITCH key only
+Write-Host "⚙️ Running post-install configuration for VM_SWITCH..." -ForegroundColor Cyan
+
+& "$configureScript" -Key VM_SWITCH
+$exitCode = $LASTEXITCODE
+
+if ($exitCode -ne 0) {
+    Write-Warning "🚫 VM_SWITCH configuration failed with exit code $exitCode. Installation aborted."
     exit 1
 }
 

@@ -1,6 +1,7 @@
 param (
     [switch]$NonInteractive,
-    [switch]$Help
+    [switch]$Help,
+    [string]$Key
 )
 
 if ($Help) {
@@ -27,6 +28,7 @@ try {
     Import-Module "$PSScriptRoot\modules\vmgenie-import.psm1"
     Import-Module "$PSScriptRoot\modules\vmgenie-config.psm1"
     Import-Module "$PSScriptRoot\modules\vmgenie-prompt.psm1"
+    Import-Module "$PSScriptRoot\modules\vmgenie-service.psm1"
 
     # Initialize
     $cfg = Get-Configuration
@@ -106,24 +108,47 @@ try {
     }
 
     function Request-UserInput {
+        param(
+            [string]$Key
+        )
+
         Write-Host ""
         Write-Host "=============================================================" -ForegroundColor Cyan
         Write-Host " Configuring vmgenie (.vmgenie-cfg.yml)" -ForegroundColor Cyan
         Write-Host "=============================================================" -ForegroundColor Cyan
         Write-Host ""
 
-        foreach ($key in $prompts.Keys) {
+        $keysToPrompt = $null
+        if ($Key) {
+            if (-not $prompts.ContainsKey($Key)) {
+                Write-Error "Unknown configuration key: $Key"
+                exit 1
+            }
+            $keysToPrompt = @($Key)
+        }
+        else {
+            $keysToPrompt = $prompts.Keys
+        }
+
+        foreach ($key in $keysToPrompt) {
             $fn = $prompts[$key]
             $currentValue = Get-ConfigValueOrNull $cfg $key
 
             switch ($key) {
                 'VM_SWITCH' {
-                    # Pass current GUID as -default explicitly
-                    $result = & $fn -default $currentValue
-                    $cfg[$key] = $result.Id
+                    $serviceUp = $false
+                    if (Get-Command -Name Test-VmGenieStatus -ErrorAction SilentlyContinue) {
+                        $serviceUp = Test-VmGenieStatus
+                    }
+                    if ($serviceUp) {
+                        $result = & $fn -default $currentValue
+                        $cfg[$key] = $result.Id
+                    }
+                    else {
+                        $cfg[$key] = ''
+                    }
                 }
                 default {
-                    # Fall back to the standard -value
                     $result = & $fn -value $currentValue
                     $cfg[$key] = [string]$result
                 }
@@ -135,7 +160,12 @@ try {
     Merge-Defaults
 
     if (-not $NonInteractive) {
-        Request-UserInput
+        if ($Key) {
+            Request-UserInput -Key $Key
+        }
+        else {
+            Request-UserInput
+        }
     }
 
     Save-Configuration -Config $cfg
