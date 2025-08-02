@@ -83,6 +83,16 @@ catch {
     exit 1
 }
 
+# Step 2.5: Restore NuGet packages before configuration
+$buildScript = Join-Path $PSScriptRoot "build.ps1"
+Write-Host "📦 Ensuring all NuGet packages are restored..." -ForegroundColor Cyan
+
+& "$buildScript"
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "🚫 Failed to restore NuGet packages. Installation aborted."
+    exit 1
+}
+
 # Step 3: Run configure (normal privileges) - runs interactive for everything but VM_SWITCH
 $configureScript = Join-Path $PSScriptRoot "configure.ps1"
 Write-Host "⚙️ Running initial configuration (all keys except VM_SWITCH)..." -ForegroundColor Cyan
