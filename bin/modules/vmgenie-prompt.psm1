@@ -426,10 +426,6 @@ function Invoke-VmPrompt {
         throw "Service error: $script:VmError"
     }
 
-    if (-not $script:VmResult -or $script:VmResult.Count -eq 0) {
-        throw "No VMs returned from service."
-    }
-
     # Build a hashtable: display name → VM object
     $vmMap = @{}
     foreach ($vm in $script:VmResult) {
