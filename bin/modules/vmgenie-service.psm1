@@ -1,53 +1,56 @@
-# bin/modules/vmgenie-service.psm1
+chcp 65001 > $null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Requires PowerShell 5.1+ or Core
-# .NET 8.0 is expected and validated by the bootstrap script already.
-
-# Constants
 $ServiceName = "VmGenie"
 $DisplayName = "VmGenie Service"
 $PublishConfig = "Release"
 $Runtime = "win-x64"
 $ProjectPath = Resolve-Path "$PSScriptRoot\..\..\src\vmgenie.csproj"
-$ServiceTargetDir = "C:\Program Files\VmGenie\Service"
+$ServiceTargetDir = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "VmGenie\Service"
 
-function Build-VmGenieService {
-    <#
-.SYNOPSIS
-Publishes the VmGenie service to the publish directory.
-#>
-
-    Write-Host "🔨 Building (publishing) VmGenie Service..." -ForegroundColor Cyan
+function Publish-VmGenieService {
+    Write-Host "[INFO] Building (publishing) VmGenie Service..." -ForegroundColor Cyan
     Push-Location (Split-Path $ProjectPath)
 
-    $PublishOutput = Join-Path $PSScriptRoot '..\..\bin\Release\net8.0\win-x64\publish' | Resolve-Path -ErrorAction SilentlyContinue
+    # Find csproj directory (should be ...\src)
+    $projectDir = Split-Path $ProjectPath
 
-    dotnet publish $ProjectPath `
+    # Compose expected publish output
+    $publishOutputPath = Join-Path $projectDir 'bin\Release\net8.0-windows\win-x64\publish'
+
+    $null = dotnet publish $ProjectPath `
         -c $PublishConfig `
         -r $Runtime `
         --self-contained `
         -p:PublishSingleFile=false
 
     if ($LASTEXITCODE -ne 0) {
-        throw "❌ dotnet publish failed."
+        Pop-Location
+        throw "[FAIL] dotnet publish failed."
+    }
+
+    if (-not (Test-Path $publishOutputPath)) {
+        Pop-Location
+        throw "[FAIL] Publish output directory '$publishOutputPath' does not exist."
     }
 
     Pop-Location
-    Write-Host "✅ VmGenie Service published to: $PublishOutput" -ForegroundColor Green
+    Write-Host "[OK] VmGenie Service published to: $publishOutputPath" -ForegroundColor Green
+    return $publishOutputPath
 }
 
 function Install-VmGenieService {
     <#
-.SYNOPSIS
-Installs the VmGenie service with Windows Service Control Manager.
-#>
-    Write-Host "🧰 Installing VmGenie Service..." -ForegroundColor Cyan
+    .SYNOPSIS
+    Installs the VmGenie service with Windows Service Control Manager.
+    #>
+    Write-Host "[INFO] Installing VmGenie Service..." -ForegroundColor Cyan
 
-    Build-VmGenieService
+    $PublishOutput = Publish-VmGenieService
 
     # Stop service if already installed
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-        Write-Host "ℹ️ Service already exists. Stopping & removing existing service..."
+        Write-Host "[INFO] Service already exists. Stopping & removing existing service..."
         Stop-VmGenieService -ErrorAction SilentlyContinue
         sc.exe delete $ServiceName | Out-Null
         Start-Sleep -Seconds 2
@@ -62,47 +65,71 @@ Installs the VmGenie service with Windows Service Control Manager.
     # Install service (elevated required)
     $exePath = Join-Path $ServiceTargetDir "vmgenie.exe"  # name after .csproj output
 
-    Write-Host "📦 Registering Windows Service: $ServiceName → $exePath"
+    Write-Host "[INFO] Registering Windows Service: $ServiceName -- $exePath"
     sc.exe create $ServiceName binPath= "`"$exePath`"" DisplayName= "`"$DisplayName`"" start= auto | Out-Null
 
+    # --- Set the service description ---
+    $ServiceDescription = "Automated, reproducible Hyper V VM provisioning made easy. (https://github.com/jesse-greathouse/vmgenie)"
+    sc.exe description $ServiceName "$ServiceDescription"
+
     Start-VmGenieService
-    Write-Host "🎉 VmGenie Service installed & started!" -ForegroundColor Green
+    Write-Host "[INFO] VmGenie Service installed & started!" -ForegroundColor Green
 }
 
 function Start-VmGenieService {
     <#
-.SYNOPSIS
-Starts the VmGenie service.
-#>
-    Write-Host "🚀 Starting VmGenie Service..." -ForegroundColor Cyan
-    Start-Service -Name $ServiceName
-    Write-Host "✅ VmGenie Service started." -ForegroundColor Green
+    .SYNOPSIS
+    Starts the VmGenie service. Fails with explicit error if unsuccessful.
+    #>
+    Write-Host "[INFO] Starting VmGenie Service..." -ForegroundColor Cyan
+    try {
+        Start-Service -Name $ServiceName -ErrorAction Stop
+        Write-Host "[OK] VmGenie Service started." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[FAIL] Could not start VmGenie Service: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
 }
 
 function Stop-VmGenieService {
     <#
-.SYNOPSIS
-Stops the VmGenie service.
-#>
-    Write-Host "🛑 Stopping VmGenie Service..." -ForegroundColor Cyan
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    Write-Host "✅ VmGenie Service stopped." -ForegroundColor Green
+    .SYNOPSIS
+    Stops the VmGenie service. Fails with explicit error if unsuccessful.
+    #>
+    Write-Host "[INFO] Stopping VmGenie Service..." -ForegroundColor Cyan
+    try {
+        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+        Write-Host "[OK] VmGenie Service stopped." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[WARN] Could not stop VmGenie Service (may not be running): $($_.Exception.Message)" -ForegroundColor Yellow
+        # Don't throw, since it's not always fatal
+    }
 }
 
 function Restart-VmGenieService {
     <#
-.SYNOPSIS
-Restarts the VmGenie service.
-#>
-    Stop-VmGenieService
-    Start-VmGenieService
+    .SYNOPSIS
+    Restarts the VmGenie service. Fails with explicit error if unsuccessful.
+    #>
+    Write-Host "[INFO] Restarting VmGenie Service..." -ForegroundColor Cyan
+    try {
+        Stop-VmGenieService
+        Start-VmGenieService
+        Write-Host "[OK] VmGenie Service restarted." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[FAIL] Could not restart VmGenie Service: $($_.Exception.Message)" -ForegroundColor Red
+        throw
+    }
 }
 
 function Test-VmGenieStatus {
     <#
-.SYNOPSIS
-Queries the VmGenie Service via the "status" command and returns $true if it responds OK.
-#>
+    .SYNOPSIS
+    Queries the VmGenie Service via the "status" command and returns $true if it responds OK.
+    #>
     $repoRoot = Resolve-Path "$PSScriptRoot\..\.."
     $clientModulePath = Join-Path $repoRoot 'bin\modules\vmgenie-client.psm1'
 
@@ -134,10 +161,60 @@ Queries the VmGenie Service via the "status" command and returns $true if it res
     return $responseStatusRef.Value
 }
 
+function Remove-VmGenieService {
+    <#
+    .SYNOPSIS
+        Stops, unregisters, and deletes the VmGenie Windows Service and its program files directory.
+    .DESCRIPTION
+        - Stops the VmGenie service (if running)
+        - Deletes the service from Windows Service Control Manager (SCM)
+        - Removes the published application directory under Program Files
+    #>
+    Write-Host "[INFO] Removing VmGenie Windows Service..." -ForegroundColor Cyan
+
+    # Stop the service (no error if already stopped)
+    try {
+        Stop-VmGenieService -ErrorAction SilentlyContinue
+    }
+    catch {
+        Write-Host "[WARN] Failed to stop service (may not be running): $_" -ForegroundColor Yellow
+    }
+
+    # Delete the service from the SCM
+    $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($service) {
+        Write-Host "[INFO] Deleting service from SCM: $ServiceName"
+        sc.exe delete $ServiceName | Out-Null
+        Start-Sleep -Seconds 2
+    }
+    else {
+        Write-Host "[INFO] Service $ServiceName does not exist in SCM (already removed)." -ForegroundColor Yellow
+    }
+
+    # Remove the published application directory
+    $publishedRoot = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "VmGenie"
+    if (Test-Path $publishedRoot) {
+        try {
+            Remove-Item -Path $publishedRoot -Recurse -Force
+            Write-Host "[OK] Removed program directory: $publishedRoot" -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "[FAIL] Failed to remove program directory: $publishedRoot -- $_"
+        }
+    }
+    else {
+        Write-Host "[INFO] No program directory found at $publishedRoot (already removed)." -ForegroundColor Yellow
+    }
+
+    Write-Host "[DONE] VmGenie Service removal complete." -ForegroundColor Green
+}
+
+
 Export-ModuleMember -Function `
-    Build-VmGenieService, `
+    Publish-VmGenieService, `
     Install-VmGenieService, `
     Start-VmGenieService, `
     Stop-VmGenieService, `
     Restart-VmGenieService, `
-    Test-VmGenieStatus
+    Test-VmGenieStatus, `
+    Remove-VmGenieService

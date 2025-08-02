@@ -1,5 +1,4 @@
-# Orchestrates bootstrap (elevated), build (normal), and configure (normal) steps
-
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Write-Host "🧰 Starting vmgenie installation..." -ForegroundColor Cyan
 
 function Start-BootstrapElevated {
@@ -40,7 +39,7 @@ function Start-BootstrapElevated {
     }
 }
 
-# Step 1: Run bootstrap elevated
+# Step 1: Run bootstrap (elevated, required for SCM install/registry/etc)
 $bootstrapExitCode = Start-BootstrapElevated
 
 if ($bootstrapExitCode -ne 0) {
@@ -48,20 +47,9 @@ if ($bootstrapExitCode -ne 0) {
     exit 1
 }
 
-Write-Host "✅ Bootstrap succeeded. Continuing with build..." -ForegroundColor Green
+Write-Host "✅ Bootstrap succeeded. Continuing with configuration..." -ForegroundColor Green
 
-# Step 2: Run build (normal privileges)
-$buildScript = Join-Path $PSScriptRoot "build.ps1"
-& $buildScript
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "🚫 Build failed with exit code $LASTEXITCODE. Installation aborted."
-    exit 1
-}
-
-Write-Host "✅ Build succeeded. Continuing with configuration..." -ForegroundColor Green
-
-# Step 2.5: Copy dist GMI repository file if user copy does not exist
+# Step 2: Copy dist GMI repository file if user copy does not exist
 $distRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.dist.yml"
 $userRepoFile = Join-Path $PSScriptRoot "..\gmi-repository.yml"
 
@@ -79,16 +67,7 @@ else {
     Write-Host "ℹ️ gmi-repository.yml already exists; skipping copy." -ForegroundColor Yellow
 }
 
-# Step 3: Run configure (normal privileges)
-$configureScript = Join-Path $PSScriptRoot "configure.ps1"
-& $configureScript
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "🚫 Configuration failed with exit code $LASTEXITCODE. Installation aborted."
-    exit 1
-}
-
-# Step 4: Install 'genie.ps1' script to per-user WindowsApps for CLI access (non-elevated)
+# Step 3: Install 'genie.ps1' script to per-user WindowsApps for CLI access (non-elevated)
 $windowsAppsDir = Join-Path $env:USERPROFILE "AppData\Local\Microsoft\WindowsApps"
 $targetScript = Join-Path $windowsAppsDir "genie.ps1"
 $sourceScript = Join-Path $PSScriptRoot "genie.ps1"
@@ -114,6 +93,18 @@ try {
 }
 catch {
     Write-Warning "🚫 Failed to copy genie.ps1 to WindowsApps: $_"
+    exit 1
+}
+
+# Step 4: Run configure (normal privileges)
+$configureScript = Join-Path $PSScriptRoot "configure.ps1"
+Write-Host "⚙️ Running configuration script..." -ForegroundColor Cyan
+
+& "$configureScript"
+$exitCode = $LASTEXITCODE
+
+if ($exitCode -ne 0) {
+    Write-Warning "🚫 Configuration failed with exit code $exitCode. Installation aborted."
     exit 1
 }
 

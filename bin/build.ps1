@@ -1,10 +1,8 @@
-# bin/build.ps1
-# Restores NuGet packages for vmgenie
-
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Write-Host "📦 Restoring NuGet packages..." -ForegroundColor Cyan
 
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
-$slnPath  = Join-Path $repoRoot "vmgenie.sln"
+$slnPath = Join-Path $repoRoot "vmgenie.sln"
 
 if (-not (Test-Path $slnPath)) {
     Write-Warning "🚫 Could not find solution file: $slnPath"

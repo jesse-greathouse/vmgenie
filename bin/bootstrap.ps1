@@ -1,6 +1,3 @@
-# bin/bootstrap.ps1
-# Validates host system for vmgenie. Returns 0 on success, 1 on failure.
-
 chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -11,40 +8,44 @@ function Fail($msg) {
     exit 1
 }
 
-# region --- Check if running as Administrator ---
+# Check if running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] `
-          [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(`
-          [Security.Principal.WindowsBuiltinRole]::Administrator)) {
+            [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(`
+            [Security.Principal.WindowsBuiltinRole]::Administrator)) {
     Fail 'This script must be run from an elevated (Administrator) PowerShell session.'
-} else {
+}
+else {
     Write-Host '[OK] Running as Administrator' -ForegroundColor Green
 }
 
-# region --- Check Windows edition ---
+# Check Windows edition
 $winEdition = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').EditionID
 if ($winEdition -notin @('Professional', 'Enterprise', 'Education')) {
     Fail "Windows Edition '$winEdition' does NOT support Hyper-V."
-} else {
+}
+else {
     Write-Host "[OK] Windows Edition: $winEdition" -ForegroundColor Green
 }
 
-# region --- Check Windows build number ---
+# Check Windows build number
 $winBuild = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
 if ($winBuild -lt 19041) {
     Fail "Windows build $winBuild is too old. Requires at least 19041 (Windows 10 2004)."
-} else {
+}
+else {
     Write-Host "[OK] Windows build: $winBuild" -ForegroundColor Green
 }
 
-# region --- Check Hyper-V feature ---
+# Check Hyper-V feature
 $hvFeature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All
 if ($hvFeature.State -ne 'Enabled') {
     Fail 'Hyper-V feature is not enabled. Enable it and reboot before continuing.'
-} else {
+}
+else {
     Write-Host '[OK] Hyper-V is enabled' -ForegroundColor Green
 }
 
-# region --- Check .NET SDK ---
+# Check .NET SDK
 try {
     $dotnetVersion = & dotnet --version
     if ($LASTEXITCODE -ne 0) { throw }
@@ -57,11 +58,12 @@ try {
     }
 
     Write-Host "[OK] .NET SDK: $dotnetVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Fail 'The .NET SDK is not installed or not in PATH. Install it from https://dotnet.microsoft.com/download'
 }
 
-# region --- Write APPLICATION_DIR to Registry ---
+# Write APPLICATION_DIR to Registry
 try {
     Write-Host '[INFO] Writing APPLICATION_DIR to registry...' -ForegroundColor Cyan
 
@@ -77,10 +79,25 @@ try {
     Set-ItemProperty -Path $serviceRegPath -Name 'APPLICATION_DIR' -Value $repoRoot -Force
 
     Write-Host "[OK] APPLICATION_DIR set to '$repoRoot' in registry." -ForegroundColor Green
-} catch {
+}
+catch {
     Fail 'Failed to write to registry Key'
 }
 
+# Import service module and install/start VmGenie Service
+try {
+    $serviceModule = Join-Path $PSScriptRoot "modules/vmgenie-service.psm1"
+    Import-Module $serviceModule -Force
+
+    Write-Host "[INFO] Installing VmGenie Windows Service via Install-VmGenieService..." -ForegroundColor Cyan
+    Install-VmGenieService
+
+    Write-Host "[OK] VmGenie Windows Service is installed and started." -ForegroundColor Green
+}
+catch {
+    Fail "Failed to install or start VmGenie Service: $_"
+}
+
 Write-Host ''
-Write-Host '[DONE] Host validation complete. Environment is ready!' -ForegroundColor Green
+Write-Host '[DONE] Host validation and service installation complete. Environment is ready!' -ForegroundColor Green
 exit 0
