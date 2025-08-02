@@ -21,15 +21,26 @@ A demonstration of a modern Virtual Machine provisioning tool for Hyper‑V on W
 - Supports multiple OSes and versions
 - Communicates with a Windows Service over a robust named pipe protocol
 
+## 🚀 Quickstart
+
+```powershell
+git clone https://github.com/jesse-greathouse/vmgenie
+cd vmgenie
+bin/install # follow install prompts
+genie connect my-test-vm # follow provisioning prompts
+```
+
 ---
 
 ## 📚 Table of Contents
 
 - [vmgenie](#vmgenie)
   - [✨ Features](#-features)
+  - [🚀 Quickstart](#-quickstart)
   - [📚 Table of Contents](#-table-of-contents)
   - [📖 Further Documentation](#-further-documentation)
   - [🧰 Installation](#-installation)
+  - [🧹 Uninstalling](#-uninstalling)
   - [Using VmGenie](#using-vmgenie)
     - [General Syntax](#general-syntax)
     - [Available Commands and Workflows](#available-commands-and-workflows)
@@ -90,6 +101,14 @@ or
 
 ```powershell
 ❌ Service is down
+```
+
+## 🧹 Uninstalling
+
+To fully remove the service and CLI integration, run:
+
+```powershell
+bin/uninstall
 ```
 
 ## Using VmGenie
