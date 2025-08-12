@@ -10,6 +10,18 @@ Debian-12:
     description: "The official vmgenie Debian 12 image."
     hyperv_generation: 2
 
+Debian-13:
+  - name: "GMI Debian 13"
+    version: "13"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Debian-13.zip"
+    crc64nvme: "Gk0+QmfBXCQ="
+    last_modified: "2025-08-12T18:04:10+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "The official vmgenie Debian 13 image."
+    hyperv_generation: 2
+
 Fedora-40:
   - name: "GMI Fedora 40"
     version: "40"
