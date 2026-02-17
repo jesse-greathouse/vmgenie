@@ -469,16 +469,16 @@ rpm -qa | grep cloud-init
 sudo dnf install -y cloud-init
 
 # enable and start
-sudo systemctl enable cloud-init
+sudo systemctl enable cloud-init.target
 
 # Restrict cloud-init to only look for NoCloud (seed ISO) or None (do nothing)
 echo 'datasource_list: [ NoCloud, None ]' | sudo tee /etc/cloud/cloud.cfg.d/99-DataSource.cfg
 
 # Start cloud-init
-sudo systemctl start cloud-init
+sudo systemctl start cloud-init.target
 
 # status
-systemctl status cloud-init
+systemctl status cloud-init.target
 
 # In some versions Cloud init may have installed an ssh configuration. Delete it.
 sudo rm /etc/ssh/ssh_config.d/50-cloud-init.conf
@@ -490,7 +490,8 @@ lsmod | grep hv
 
 # If hv-kvp and/or hv-vss do not exist, they need to be installed.
 # install the hyper-v daemons
-sudo dnf install -y hyperv-daemons
+sudo dnf install -y hypervkvpd hyperv-tools
+
 # Restarting the VM should boot these damons just fine.
 
 sudo vim /etc/default/grub
