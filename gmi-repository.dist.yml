@@ -46,6 +46,18 @@ Fedora-42:
     description: "The official vmgenie Fedora 42 image."
     hyperv_generation: 2
 
+Fedora-43:
+  - name: "GMI Fedora 43"
+    version: "43"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Fedora-43.zip"
+    crc64nvme: "9f+baVucprY="
+    last_modified: "2026-02-17T16:00:50+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "The official vmgenie Fedora 43 image."
+    hyperv_generation: 2
+
 OpenSUSE-15.6:
   - name: "GMI OpenSUSE 15.6"
     version: "15.6"
@@ -58,16 +70,16 @@ OpenSUSE-15.6:
     description: "The official vmgenie openSUSE 15.6 image."
     hyperv_generation: 2
 
-OpenSUSE-16.Beta:
-  - name: "GMI OpenSUSE 16.Beta"
-    version: "16.Beta"
-    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-16.Beta.zip"
-    crc64nvme: "rMcb0M6KzPI="
-    last_modified: "2025-07-31T14:56:28+00:00"
+OpenSUSE-16.0:
+  - name: "GMI OpenSUSE 16.0"
+    version: "16.0"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-OpenSUSE-16.zip"
+    crc64nvme: "UiXlW4qIhdY="
+    last_modified: "2026-02-17T03:06:16+00:00"
     maintainer: "Jesse Greathouse"
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
-    description: "The official vmgenie openSUSE 16.Beta image."
+    description: "The official vmgenie openSUSE 16.0 image."
     hyperv_generation: 2
 
 OpenSUSE-Tumbleweed:
@@ -128,4 +140,16 @@ Ubuntu-25.04:
     maintainer_email: "jesse.greathouse@gmail.com"
     source_url: "https://github.com/jesse-greathouse/vmgenie"
     description: "The official vmgenie Ubuntu 25.04 image."
+    hyperv_generation: 2
+
+Ubuntu-25.10:
+  - name: "GMI Ubuntu 25.10"
+    version: "25.10"
+    url: "https://vmgenie-gmi.s3.us-east-2.amazonaws.com/GMI-Ubuntu-25.10.zip"
+    crc64nvme: "03JBbNvklxw="
+    last_modified: "2026-02-16T19:21:25+00:00"
+    maintainer: "Jesse Greathouse"
+    maintainer_email: "jesse.greathouse@gmail.com"
+    source_url: "https://github.com/jesse-greathouse/vmgenie"
+    description: "The official vmgenie Ubuntu 25.10 image."
     hyperv_generation: 2
